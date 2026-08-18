@@ -1,4 +1,4 @@
-# Stage 01 - Installation
+# Stage 01 - Manual Installation
 
 ## Sources
 
