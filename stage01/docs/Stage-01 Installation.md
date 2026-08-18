@@ -1,5 +1,8 @@
 # Stage 01 - Manual Installation
 
+The following describes the manual installation of Talos Linux (<https://www.siderolabs.com/talos-linux>), the included Kubernetes with Cilium and some sanity tests to verify correct functionality.
+The installation uses Proxmox Virtualization (<https://www.proxmox.com/en/products/proxmox-virtual-environment/overview>), but could be executed on bare metal with very few changes.
+
 ## Sources
 
 <https://docs.siderolabs.com/talos/v1.13/platform-specific-installations/virtualized-platforms/proxmox>
@@ -48,15 +51,15 @@ Note down
 
 ## Upload ISO to Proxmox
 
-Access your Proxmox Web UI. Navigate to the local disk of the node where you want to upload the ISO (“pve”  “local (pve)” in my case). There select “ISO Images”.
+Access your Proxmox Web UI. Navigate to the local disk of the node where you want to upload the ISO (“pve” &rarr; “local (pve)” in my case). There select “ISO Images”.
 
 ![Proxmox iso images](images/proxmox-iso-images.png)
 
-Select “Upload”, and “Select File” where you can select the ISO previously downloaded. Select “Upload”
+Select “Upload”, and “Select File” where you can select the ISO previously downloaded. Confirm with “Upload”
 
 ![Proxmox upload iso](images/proxmox-upload-iso.png)
 
-## Create new VM in Proxmox
+## Create a new VM in Proxmox
 
 Select “Create VM”.
 
@@ -70,7 +73,15 @@ On The “OS” tab, select the previously uploaded ISO image. Select “Next”
 
 ![Proxmox vm os iso](images/proxmox-vm-os-iso.png)
 
-On the “System” tab, select “Machine” to “q35”, “BIOS” to “OVMF (UEFI)”, “EFI Storage” to a suitable disk, uncheck “Pre-Enroll keys” (otherwise your machine will not boot!), “SCSI Controller” to “VirtIO SCSI” (not “VirtIO SCSI Single”), enable “Qemu agent”, “Add TPM” and select a suitable disk. Select “Next”.
+On the “System” tab, select
+
+- “Machine” to “q35”
+- “BIOS” to “OVMF (UEFI)”
+- “EFI Storage” to a suitable disk
+- Uncheck “Pre-Enroll keys” (otherwise your machine will not boot!)
+- “SCSI Controller” to “VirtIO SCSI” (not “VirtIO SCSI Single”)
+- Enable “Qemu agent”
+- “Add TPM” and select a suitable disk. Select “Next”
 
 ![Proxmox vm system settings](images/proxmox-vm-system-settings.png)
 
