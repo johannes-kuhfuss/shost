@@ -1,0 +1,7 @@
+# Disable default CNI and kube-proxy. Will be replaced by Cilium
+cluster:
+  network:
+    cni:
+      name: none
+  proxy:
+    disabled: true

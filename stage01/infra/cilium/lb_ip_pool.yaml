@@ -1,0 +1,9 @@
+apiVersion: cilium.io/v2
+kind: CiliumLoadBalancerIPPool
+metadata:
+  name: lan-pool
+spec:
+  blocks:
+    - start: "192.168.200.220"
+      stop: "192.168.200.239"
+

@@ -1,0 +1,4 @@
+# Set installation disk
+machine:
+  install:
+    disk: /dev/sda

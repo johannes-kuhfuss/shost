@@ -1,0 +1,3 @@
+# Enable running workloads on controlplane nodes
+cluster:
+    allowSchedulingOnControlPlanes: true

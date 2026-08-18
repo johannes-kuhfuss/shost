@@ -1,0 +1,4 @@
+# Set the installation image used. Needs the secureboot variety, if secureboot is used
+machine:
+  install:
+    image: factory.talos.dev/nocloud-installer-secureboot/ce4c980550dd2ab1b17bbf2b08801c7eb59418eafe8f279833297925d67c7515:v1.13.8

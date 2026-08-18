@@ -1,0 +1,8 @@
+# Talos Secrets
+secrets.yaml
+# Concrete Talos Configuration (contains secrets)
+controlplane.yaml
+controlplane-patched.yaml
+worker.yaml
+worker-patched.yaml
+ 
