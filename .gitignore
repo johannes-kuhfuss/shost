@@ -5,4 +5,6 @@ controlplane.yaml
 controlplane-patched.yaml
 worker.yaml
 worker-patched.yaml
- 
+# Terraform / Opentofu
+*.tfvars
+.terraform/
