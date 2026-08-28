@@ -8,3 +8,5 @@ worker-patched.yaml
 # Terraform / Opentofu
 *.tfvars
 .terraform/
+*.tfstate
+*.tfstate.*
