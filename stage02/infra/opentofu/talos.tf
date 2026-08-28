@@ -27,8 +27,19 @@ resource "proxmox_download_file" "talos_image" {
   overwrite               = false
 }
 
+# Filter talos_nodes based on talos_node_count
+locals {
+  selected_talos_nodes = {
+    for name in slice(
+      sort(keys(var.talos_nodes)),
+      0,
+      var.talos_node_count
+    ) : name => var.talos_nodes[name]
+  }
+}
+
 resource "proxmox_virtual_environment_vm" "node" {
-  for_each = var.talos_nodes
+  for_each = local.selected_talos_nodes
 
   name      = each.key
   node_name = each.value.proxmox_node

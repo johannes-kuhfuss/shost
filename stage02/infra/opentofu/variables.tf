@@ -56,5 +56,9 @@ variable "talos_nodes" {
 
 variable "talos_node_count" {
   type        = number
-  description = "Number of Talos nodes on Proxmox, must be odd"
+  description = "Number of Talos nodes on Proxmox, must be 1 or 3"
+  validation {
+    condition     = contains([1, 3], var.talos_node_count)
+    error_message = "talos_node_count must be either 1 or 3."
+  }
 }
