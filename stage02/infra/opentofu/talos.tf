@@ -23,7 +23,7 @@ resource "proxmox_download_file" "talos_image" {
   node_name               = var.proxmox_node
   url                     = "https://factory.talos.dev/image/${var.talos_image_schematic_id}/v${var.talos_version}/nocloud-amd64-secureboot.raw.xz"
   decompression_algorithm = "zst"
-  file_name               = "talos-v${var.talos_version}-nocloud-amd64-secureboot.img"
+  file_name               = "talos-v${var.talos_version}-${var.talos_image_schematic_id}-nocloud-amd64-secureboot.img"
   overwrite               = false
 }
 
@@ -34,8 +34,8 @@ resource "proxmox_virtual_environment_vm" "node" {
   node_name = each.value.proxmox_node
   vm_id     = each.value.vm_id
 
-  machine      = "q35"
-  bios         = "ovmf"
+  machine       = "q35"
+  bios          = "ovmf"
   scsi_hardware = "virtio-scsi-pci"
 
   agent {
@@ -52,7 +52,7 @@ resource "proxmox_virtual_environment_vm" "node" {
     datastore_id = var.proxmox_vm_datastore
     version      = "v2.0"
   }
-  
+
   disk {
     datastore_id = var.proxmox_vm_datastore
     interface    = "scsi0"
@@ -80,8 +80,8 @@ resource "proxmox_virtual_environment_vm" "node" {
   }
 
   network_device {
-    bridge = var.proxmox_network_bridge
-    model  = "virtio"
+    bridge      = var.proxmox_network_bridge
+    model       = "virtio"
     mac_address = each.value.mac
   }
 

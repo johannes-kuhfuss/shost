@@ -1,45 +1,45 @@
 # Proxmox
 variable "proxmox_endpoint" {
-    type = string
-    description = "Proxmox API endpoint"
+  type        = string
+  description = "Proxmox API endpoint"
 }
 
 variable "proxmox_api_token" {
-    type = string
-    description = "Proxmox API token"
-    sensitive = true
+  type        = string
+  description = "Proxmox API token"
+  sensitive   = true
 }
 
 variable "proxmox_iso_datastore" {
-    type = string
-    description = "Name of Proxmox data store to use for ISO images"
+  type        = string
+  description = "Name of Proxmox data store to use for ISO images"
 }
 
 variable "proxmox_vm_datastore" {
-    type = string
-    description = "Name of Proxmox data store to use for VMs"
+  type        = string
+  description = "Name of Proxmox data store to use for VMs"
 }
 
 variable "proxmox_node" {
-    type = string
-    description = "name of Proxmox node to use"
+  type        = string
+  description = "name of Proxmox node to use"
 }
 
 variable "proxmox_network_bridge" {
-    type = string
-    description = "name of Proxmox network bridge to use"
-    default = "vmbr0"
+  type        = string
+  description = "name of Proxmox network bridge to use"
+  default     = "vmbr0"
 }
 
 # Talos
 variable "talos_version" {
-    type = string
-    description = "Talos Linux version"
+  type        = string
+  description = "Talos Linux version"
 }
 
 variable "talos_image_schematic_id" {
-    type = string
-    description = "Talos Schematic ID identifying the exact image"
+  type        = string
+  description = "Talos Schematic ID identifying the exact image"
 }
 
 variable "talos_nodes" {
@@ -48,7 +48,6 @@ variable "talos_nodes" {
     proxmox_node   = string
     vm_id          = number
     mac            = string
-    hostname       = string
     cores          = number
     memory         = number
     data_disk_size = number
@@ -56,6 +55,6 @@ variable "talos_nodes" {
 }
 
 variable "talos_node_count" {
-    type = number
-    description = "Number of Talos nodes on Proxmox, must be odd"
+  type        = number
+  description = "Number of Talos nodes on Proxmox, must be odd"
 }
