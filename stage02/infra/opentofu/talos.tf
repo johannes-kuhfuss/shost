@@ -18,7 +18,7 @@ provider "proxmox" {
 
   ssh {
     agent = true
-    usernmame = "opentofu"
+    username = "opentofu"
   }
 }
 
