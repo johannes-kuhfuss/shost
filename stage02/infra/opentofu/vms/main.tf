@@ -1,38 +1,32 @@
 terraform {
+  required_version = ">= 1.9.0"
+
   required_providers {
     proxmox = {
       source  = "bpg/proxmox"
       version = "0.111.1"
     }
-    talos = {
-      source  = "siderolabs/talos"
-      version = "0.11.0"
-    }
   }
 }
 
 provider "proxmox" {
-  endpoint  = var.proxmox_endpoint
-  api_token = var.proxmox_api_token
-  insecure  = true
+  endpoint = var.proxmox_endpoint
+  insecure = var.proxmox_insecure
 
   ssh {
-    agent = true
-    username = "opentofu"
+    agent    = true
+    username = var.proxmox_ssh_username
   }
 }
 
-resource "proxmox_download_file" "talos_image" {
-  content_type            = "iso"
-  datastore_id            = var.proxmox_iso_datastore
-  node_name               = var.proxmox_node
-  url                     = "https://factory.talos.dev/image/${var.talos_image_schematic_id}/v${var.talos_version}/nocloud-amd64-secureboot.raw.xz"
-  decompression_algorithm = "zst"
-  file_name               = "talos-v${var.talos_version}-${var.talos_image_schematic_id}-nocloud-amd64-secureboot.img"
-  overwrite               = false
+data "terraform_remote_state" "image" {
+  backend = "local"
+
+  config = {
+    path = "${path.module}/../image/terraform.tfstate"
+  }
 }
 
-# Filter talos_nodes based on talos_node_count
 locals {
   selected_talos_nodes = {
     for name in slice(
@@ -75,7 +69,7 @@ resource "proxmox_virtual_environment_vm" "node" {
     size         = 32
     cache        = "none"
     discard      = "on"
-    file_id      = proxmox_download_file.talos_image.id
+    file_id      = data.terraform_remote_state.image.outputs.file_id
   }
 
   disk {
@@ -101,9 +95,13 @@ resource "proxmox_virtual_environment_vm" "node" {
     mac_address = each.value.mac
   }
 
-  boot_order = [
-    "scsi0",
-  ]
+  boot_order = ["scsi0"]
+  started    = true
 
-  started = true
+  lifecycle {
+    precondition {
+      condition     = try(data.terraform_remote_state.image.outputs.file_id, null) != null
+      error_message = "The image root has no Talos image file_id. Apply ../image before planning or applying the VM root."
+    }
+  }
 }

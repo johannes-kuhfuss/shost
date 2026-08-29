@@ -1,0 +1,7 @@
+proxmox_endpoint      = "https://192.168.200.53:8006"
+proxmox_insecure      = true
+proxmox_iso_datastore = "local"
+proxmox_node          = "pve"
+
+talos_version            = "1.13.9"
+talos_image_schematic_id = "replace-with-your-image-factory-schematic-id"

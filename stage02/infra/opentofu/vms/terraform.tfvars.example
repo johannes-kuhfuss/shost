@@ -1,0 +1,34 @@
+proxmox_endpoint      = "https://192.168.200.53:8006"
+proxmox_insecure      = true
+proxmox_ssh_username  = "opentofu"
+proxmox_vm_datastore  = "local-lvm"
+proxmox_network_bridge = "vmbr0"
+
+talos_nodes = {
+  tc01 = {
+    proxmox_node   = "pve"
+    vm_id          = 201
+    mac            = "BC:24:11:73:96:DB"
+    cores          = 4
+    memory         = 8 * 1024
+    data_disk_size = 50
+  }
+  tc02 = {
+    proxmox_node   = "pve"
+    vm_id          = 202
+    mac            = "BC:24:11:43:0D:3C"
+    cores          = 4
+    memory         = 8 * 1024
+    data_disk_size = 50
+  }
+  tc03 = {
+    proxmox_node   = "pve"
+    vm_id          = 203
+    mac            = "BC:24:11:8D:C9:B6"
+    cores          = 4
+    memory         = 8 * 1024
+    data_disk_size = 50
+  }
+}
+
+talos_node_count = 1
