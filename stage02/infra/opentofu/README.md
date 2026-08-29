@@ -13,6 +13,7 @@ Both roots use the provider-native `PROXMOX_VE_API_TOKEN` environment variable. 
 
 ```sh
 export PROXMOX_VE_API_TOKEN='opentofu@pve!token-id=token-secret'
+eval "$(ssh-agent -s)"
 ssh-add ~/.ssh/proxmox_opentofu
 ```
 
@@ -33,9 +34,11 @@ Initialize and apply the image first, followed by the VMs:
 
 ```sh
 tofu -chdir=image init
+tofu -chdir=image plan
 tofu -chdir=image apply
 
 tofu -chdir=vms init
+tofu -chdir=vms plan
 tofu -chdir=vms apply
 ```
 
