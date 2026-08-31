@@ -97,10 +97,10 @@ data "talos_client_configuration" "client_config" {
 # Configure control machines
 data "talos_machine_configuration" "control_machine_config" {
   cluster_name       = var.talos_cluster_name
-  cluster_endpoint   = local.cluster_endpoint
+  cluster_endpoint   = local.primary_control_node_ip
   machine_type       = "controlplane"
   machine_secrets    = talos_machine_secrets.machine_secrets.machine_secrets
-  kubernetes_version = "v${var.kubernetes_version}"
+  kubernetes_version = "v${var.talos_kubernetes_version}"
   talos_version      = "v${var.talos_version}"
 
   config_patches = [
