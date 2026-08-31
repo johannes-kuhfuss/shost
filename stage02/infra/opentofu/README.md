@@ -40,6 +40,10 @@ tofu -chdir=image apply
 tofu -chdir=vms init
 tofu -chdir=vms plan
 tofu -chdir=vms apply
+
+tofu -chdir=talos init
+tofu -chdir=talos plan
+tofu -chdir=talos apply
 ```
 
 The VM root uses a local `terraform_remote_state` data source. If the image state is moved to a remote backend later, update the data source in `vms/main.tf` to use that backend.
