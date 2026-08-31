@@ -7,6 +7,80 @@ terraform {
   }
 }
 
+# Define local variables
+locals {
+  # Set first node IP as control node IP until we have a virtual IP
+  primary_control_node_ip = var.talos_control_node_ips[0]
+  # Installation image name
+  install_image           = "factory.talos.dev/nocloud-installer-secureboot/${var.talos_image_schematic_id}:v${var.talos_version}"
+
+  # Additional config: Set installation disk
+  control_patch_install_disk = yamlencode({
+    machine = {
+      install = {
+        disk = var.talos_install_disk
+      }
+    }
+  })
+
+  # Additional config: Set the installation image used. Needs the secureboot variety, if secureboot is used
+  control_patch_install_image = yamlencode({
+    machine = {
+      install = {
+        image = local.install_image
+      }
+    }
+  })
+
+  # Additional config: Set network interface
+  control_patch_network = yamlencode({
+    machine = {
+      network = {
+        interfaces = [
+          {
+            interface = var.talos_network_interface
+            dhcp      = true
+          }
+        ]
+      }
+    }
+  })
+
+  # Additional config: Enable TPM-based disk encryption
+  control_patch_disk_encryption = yamlencode({
+    machine = {
+      systemDiskEncryption = {
+        ephemeral = {
+          provider = "luks2"
+          keys = [
+            {
+              slot = 0
+              tpm  = {}
+            }
+          ]
+        }
+
+        state = {
+          provider = "luks2"
+          keys = [
+            {
+              slot = 0
+              tpm  = {}
+            }
+          ]
+        }
+      }
+    }
+  })
+
+  # Additional config: Enable running workloads on controlplane nodes
+  control_patch_scheduling = yamlencode({
+    cluster = {
+      allowSchedulingOnControlPlanes = true
+    }
+  })
+}
+
 # Create machine secrets
 resource "talos_machine_secrets" "machine_secrets" {
   talos_version = "v${var.talos_version}"
@@ -20,11 +94,6 @@ data "talos_client_configuration" "client_config" {
   nodes                = var.talos_control_node_ips
 }
 
-# Set first node IP as control node IP until we have a virtual IP
-locals {
-  primary_control_node_ip = var.talos_control_node_ips[0]
-}
-
 # Configure control machines
 data "talos_machine_configuration" "control_machine_config" {
   cluster_name       = var.talos_cluster_name
@@ -34,97 +103,12 @@ data "talos_machine_configuration" "control_machine_config" {
   kubernetes_version = "v${var.kubernetes_version}"
   talos_version      = "v${var.talos_version}"
 
-  config_patches = []
-}
-
-# Additional config: Set installation disk
-data "talos_machine_configuration" "control_machine_config" {
   config_patches = [
-    yamlencode({
-      machine = {
-        install = {
-          disk = var.talos_install_disk
-        }
-      }
-    })
-  ]
-}
-
-# Define installation image
-locals {
-  install_image = "factory.talos.dev/nocloud-installer-secureboot/${var.talos_image_schematic_id}:v${var.talos_version}"
-}
-
-# Additional config: Set the installation image used. Needs the secureboot variety, if secureboot is used
-data "talos_machine_configuration" "control_machine_config" {
-  config_patches = [
-    yamlencode({
-      machine = {
-        install = {
-          image = local.install_image
-        }
-      }
-    })
-  ]
-}
-
-# Additional config: Set network interface
-data "talos_machine_configuration" "control_machine_config" {
-  config_patches = [
-    yamlencode({
-      machine = {
-        network = {
-          interfaces = [
-            {
-              interface = var.talos_network_interface
-              dhcp      = true
-            }
-          ]
-        }
-      }
-    })
-  ]
-}
-
-# Additional config: Enable TPM-based disk encryption
-data "talos_machine_configuration" "control_machine_config" {
-  config_patches = [
-    yamlencode({
-      machine = {
-        systemDiskEncryption = {
-          ephemeral = {
-            provider = "luks2"
-            keys = [
-              {
-                slot = 0
-                tpm  = {}
-              }
-            ]
-          }
-
-          state = {
-            provider = "luks2"
-            keys = [
-              {
-                slot = 0
-                tpm  = {}
-              }
-            ]
-          }
-        }
-      }
-    })
-  ]
-}
-
-# Additional config: Enable running workloads on controlplane nodes
-data "talos_machine_configuration" "control_machine_config" {
-  config_patches = [
-    yamlencode({
-      cluster = {
-        allowSchedulingOnControlPlanes = true
-      }
-    })
+    local.control_patch_install_disk,
+    local.control_patch_install_image,
+    local.control_patch_network,
+    local.control_patch_disk_encryption,
+    local.control_patch_scheduling,
   ]
 }
 
