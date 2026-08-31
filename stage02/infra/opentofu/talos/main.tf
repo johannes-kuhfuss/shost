@@ -11,6 +11,8 @@ terraform {
 locals {
   # Set first node IP as control node IP until we have a virtual IP
   primary_control_node_ip = var.talos_control_node_ips[0]
+  # Set cluster endpoint
+  cluster_endpoint = "https://${local.primary_control_node_ip}:6443"
   # Installation image name
   install_image           = "factory.talos.dev/nocloud-installer-secureboot/${var.talos_image_schematic_id}:v${var.talos_version}"
 
@@ -97,7 +99,7 @@ data "talos_client_configuration" "client_config" {
 # Configure control machines
 data "talos_machine_configuration" "control_machine_config" {
   cluster_name       = var.talos_cluster_name
-  cluster_endpoint   = local.primary_control_node_ip
+  cluster_endpoint   = local.cluster_endpoint
   machine_type       = "controlplane"
   machine_secrets    = talos_machine_secrets.machine_secrets.machine_secrets
   kubernetes_version = "v${var.talos_kubernetes_version}"

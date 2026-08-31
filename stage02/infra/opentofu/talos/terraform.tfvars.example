@@ -1,7 +1,7 @@
 talos_version      = "1.13.9"
 talos_kubernetes_version = "1.36.3"
 talos_cluster_name       = "talos-cluster"
-talos_control_nodes = [
+talos_control_node_ips = [
     "192.168.200.201",
     "192.168.200.202",
     "192.168.200.203",
