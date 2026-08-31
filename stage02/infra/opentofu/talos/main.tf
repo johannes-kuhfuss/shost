@@ -129,3 +129,13 @@ resource "talos_machine_bootstrap" "bootstrap" {
   node                 = local.primary_control_node_ip
   endpoint             = local.primary_control_node_ip
 }
+
+resource "talos_cluster_kubeconfig" "kubeconfig" {
+  depends_on = [
+    talos_machine_bootstrap.bootstrap
+  ]
+
+  client_configuration = talos_machine_secrets.machine_secrets.client_configuration
+  node                 = local.primary_control_node_ip
+  endpoint             = local.primary_control_node_ip
+}
