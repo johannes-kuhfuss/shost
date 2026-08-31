@@ -24,7 +24,7 @@ variable "talos_control_node_ips" {
   description = "IPs of the Talos control nodes"
 
   validation {
-    condition     = length(var.talos_control_nodes) == 1 || length(var.talos_control_nodes) == 3
+    condition     = length(var.talos_control_node_ips) == 1 || length(var.talos_control_node_ips) == 3
     error_message = "You must specify either 1 or 3 nodes."
   }
 }
