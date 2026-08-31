@@ -19,7 +19,7 @@ variable "talos_cluster_name" {
   default     = "talos-cluster"
 }
 
-variable "talos_control_nodes" {
+variable "talos_control_node_ips" {
   type        = list(string)
   description = "IPs of the Talos control nodes"
 
