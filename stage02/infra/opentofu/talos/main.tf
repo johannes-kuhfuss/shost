@@ -175,7 +175,7 @@ data "talos_cluster_health" "health" {
   control_plane_nodes  = var.talos_control_node_ips
   endpoints            = var.talos_control_node_ips
 
-  timeouts {
+  timeouts = {
     read = "15m"
   }
 }
