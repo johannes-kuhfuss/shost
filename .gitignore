@@ -10,3 +10,5 @@ worker-patched.yaml
 .terraform/
 *.tfstate
 *.tfstate.*
+# Talosocnfig and kubeconfig
+config
