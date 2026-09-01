@@ -11,8 +11,10 @@ terraform {
 locals {
   # Set first node IP as control node IP until we have a virtual IP
   primary_control_node_ip = var.talos_control_node_ips[0]
+
   # Set cluster endpoint
   cluster_endpoint = "https://${local.primary_control_node_ip}:6443"
+
   # Installation image name
   install_image           = "factory.talos.dev/nocloud-installer-secureboot/${var.talos_image_schematic_id}:v${var.talos_version}"
 
@@ -81,6 +83,37 @@ locals {
       allowSchedulingOnControlPlanes = true
     }
   })
+
+  # Enable certificate rotation and enable metrics server
+  control_patch_metrics = yamlencode({
+    machine = {
+      kubelet = {
+        extraArgs = {
+          rotate-server-certificates = "true"
+        }
+      }
+    }
+    cluster = {
+      extraManifests = [
+        "https://raw.githubusercontent.com/alex1989hu/kubelet-serving-cert-approver/v0.12.0/deploy/standalone-install.yaml",
+        "https://github.com/kubernetes-sigs/metrics-server/releases/download/v0.9.0/components.yaml",
+      ]
+    }
+  })
+
+  # Disable default CNI and kube-proxy. Will be replaced by Cilium
+  control_patch_nocni = yamlencode({
+    cluster = {
+      network = {
+        cni = {
+          name = "none"
+        }
+      }
+      proxy = {
+        disabled = true
+      }
+    }
+  })
 }
 
 # Create machine secrets
@@ -111,6 +144,8 @@ data "talos_machine_configuration" "control_machine_config" {
     local.control_patch_network,
     local.control_patch_disk_encryption,
     local.control_patch_scheduling,
+    local.control_patch_metrics,
+    #local.control_patch_nocni,
   ]
 }
 
@@ -130,9 +165,24 @@ resource "talos_machine_bootstrap" "bootstrap" {
   endpoint             = local.primary_control_node_ip
 }
 
-resource "talos_cluster_kubeconfig" "kubeconfig" {
+# Wait until Talos and Kubernetes are healthy
+data "talos_cluster_health" "health" {
   depends_on = [
     talos_machine_bootstrap.bootstrap
+  ]
+
+  client_configuration = talos_machine_secrets.machine_secrets.client_configuration
+  control_plane_nodes  = var.talos_control_node_ips
+  endpoints            = var.talos_control_node_ips
+
+  timeouts {
+    read = "15m"
+  }
+}
+
+resource "talos_cluster_kubeconfig" "kubeconfig" {
+  depends_on = [
+    data.talos_cluster_health.health
   ]
 
   client_configuration = talos_machine_secrets.machine_secrets.client_configuration
