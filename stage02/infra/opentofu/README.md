@@ -47,3 +47,16 @@ tofu -chdir=talos apply
 ```
 
 The VM root uses a local `terraform_remote_state` data source. If the image state is moved to a remote backend later, update the data source in `vms/main.tf` to use that backend.
+
+## Store talosconfig and kubeconfig
+
+Caution: this will overwrite an existing talosconfig and kubeconfig.
+
+```sh
+install -d -m 700 ~/.talos ~/.kube
+
+tofu -chdir=talos output -raw talosconfig > ~/.talos/config
+tofu -chdir=talos output -raw kubeconfig > ~/.kube/config
+
+chmod 600 ~/.talos/config ~/.kube/config
+```
