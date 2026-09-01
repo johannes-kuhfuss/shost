@@ -26,6 +26,7 @@ Create the ignored variable files from the tracked examples and adjust their val
 ```sh
 cp image/terraform.tfvars.example image/terraform.tfvars
 cp vms/terraform.tfvars.example vms/terraform.tfvars
+cp talos/terraform.tfvars.example talos/terraform.tfvars
 ```
 
 ## Apply order

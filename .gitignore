@@ -12,3 +12,5 @@ worker-patched.yaml
 *.tfstate.*
 # Talosocnfig and kubeconfig
 config
+# Notes
+Notes.txt
