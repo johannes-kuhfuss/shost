@@ -100,10 +100,14 @@ resource "kubernetes_manifest" "gateway_api" {
     force_conflicts = true
   }
 
-  wait {
-    condition {
-      type   = "Established"
-      status = "True"
+  dynamic "wait" {
+    for_each = each.value.kind == "CustomResourceDefinition" ? [true] : []
+
+    content {
+      condition {
+        type   = "Established"
+        status = "True"
+      }
     }
   }
 }
