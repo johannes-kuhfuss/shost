@@ -1,0 +1,81 @@
+# Cilium Helm values for Talos Linux
+#
+# Assumptions:
+# - Talos CNI is set to "none"
+# - Talos kube-proxy is disabled
+# - Talos KubePrism is enabled on localhost:7445
+# - Cilium overlay routing uses VXLAN
+# - Gateway API CRDs are installed by the Talos root
+
+ipam:
+  mode: kubernetes
+
+kubeProxyReplacement: true
+
+# Use Talos KubePrism as the Kubernetes API endpoint.
+k8sServiceHost: localhost
+k8sServicePort: 7445
+
+# Required when Talos Host DNS is used with Cilium.
+bpf:
+  hostLegacyRouting: true
+
+# Talos already provides the cgroup v2 mount.
+cgroup:
+  autoMount:
+    enabled: false
+  hostRoot: /sys/fs/cgroup
+
+# Talos does not permit workloads to load kernel modules, so SYS_MODULE is
+# deliberately omitted.
+securityContext:
+  capabilities:
+    ciliumAgent:
+      - CHOWN
+      - KILL
+      - NET_ADMIN
+      - NET_RAW
+      - IPC_LOCK
+      - SYS_ADMIN
+      - SYS_RESOURCE
+      - DAC_OVERRIDE
+      - FOWNER
+      - SETGID
+      - SETUID
+
+    cleanCiliumState:
+      - NET_ADMIN
+      - SYS_ADMIN
+      - SYS_RESOURCE
+
+routingMode: tunnel
+tunnelProtocol: vxlan
+
+l7Proxy: true
+
+gatewayAPI:
+  enabled: true
+
+  gatewayClass:
+    create: true
+
+  enableAlpn: true
+  enableAppProtocol: true
+
+l2announcements:
+  enabled: true
+
+hubble:
+  enabled: true
+
+  relay:
+    enabled: true
+
+  ui:
+    enabled: true
+
+  tls:
+    enabled: true
+    auto:
+      enabled: true
+      method: cronJob

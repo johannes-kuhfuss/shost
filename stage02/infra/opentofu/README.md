@@ -4,12 +4,14 @@ The infrastructure is split into independently managed root modules with separat
 
 - `image/` downloads and owns the Talos image in Proxmox.
 - `vms/` creates Talos VMs and reads the image file ID from `image/terraform.tfstate`.
+- `talos/` configures and bootstraps Talos, then produces the Kubernetes credentials.
+- `cilium/` installs Cilium with Helm and waits for the complete cluster to become healthy.
 
-Destroying the VM root does not destroy the image.
+Destroying one root does not automatically destroy resources owned by another root.
 
 ## Credentials
 
-Both roots use the provider-native `PROXMOX_VE_API_TOKEN` environment variable. The VM root also uses the local SSH agent with the Linux user configured by `proxmox_ssh_username`.
+The image and VM roots use the provider-native `PROXMOX_VE_API_TOKEN` environment variable. The VM root also uses the local SSH agent with the Linux user configured by `proxmox_ssh_username`.
 
 ```sh
 export PROXMOX_VE_API_TOKEN='opentofu@pve!token-id=token-secret'
@@ -27,11 +29,12 @@ Create the ignored variable files from the tracked examples and adjust their val
 cp image/terraform.tfvars.example image/terraform.tfvars
 cp vms/terraform.tfvars.example vms/terraform.tfvars
 cp talos/terraform.tfvars.example talos/terraform.tfvars
+cp cilium/terraform.tfvars.example cilium/terraform.tfvars
 ```
 
 ## Apply order
 
-Initialize and apply the image first, followed by the VMs:
+Initialize and apply the roots in dependency order:
 
 ```sh
 tofu -chdir=image init
@@ -45,9 +48,26 @@ tofu -chdir=vms apply
 tofu -chdir=talos init
 tofu -chdir=talos plan
 tofu -chdir=talos apply
+
+tofu -chdir=cilium init
+tofu -chdir=cilium plan
+tofu -chdir=cilium apply
 ```
 
-The VM root uses a local `terraform_remote_state` data source. If the image state is moved to a remote backend later, update the data source in `vms/main.tf` to use that backend.
+The Talos root waits for Talos and the Kubernetes control plane, but skips workload checks because the cluster deliberately has no CNI at that point. The Cilium root installs the chart, waits for Helm resources and jobs, and then runs the full Talos cluster-health check. A successful Cilium apply therefore means the bootstrapped cluster, CNI, and Kubernetes workloads are healthy.
+
+The Helm release has `take_ownership` enabled so it can adopt Cilium resources from the earlier inline-manifest approach. After the first successful Helm apply, Cilium upgrades and removal are managed by the Cilium root.
+
+The VM and Cilium roots use local `terraform_remote_state` data sources. If state is moved to a remote backend later, update those data sources to use the same backend.
+
+Destroy in reverse order so Helm can still reach the Kubernetes API while uninstalling Cilium:
+
+```sh
+tofu -chdir=cilium destroy
+tofu -chdir=talos destroy
+tofu -chdir=vms destroy
+tofu -chdir=image destroy
+```
 
 ## Store talosconfig and kubeconfig
 

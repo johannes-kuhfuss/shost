@@ -1,59 +1,12 @@
 terraform {
+  required_version = ">= 1.9.0"
+
   required_providers {
     talos = {
       source  = "siderolabs/talos"
       version = "0.11.0"
     }
-
-    helm = {
-      source  = "hashicorp/helm"
-      version = "3.3.0"
-    }
-
-    http = {
-      source  = "hashicorp/http"
-      version = "3.6.1"
-    }
   }
-}
-
-# Download Gateway API manifest for Cilium
-data "http" "gateway_api" {
-  url = "https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.6.1/standard-install.yaml"
-
-  retry {
-    attempts     = 2
-    min_delay_ms = 1000
-    max_delay_ms = 5000
-  }
-
-  lifecycle {
-    postcondition {
-      condition     = self.status_code == 200
-      error_message = "Failed to download the Gateway API manifest."
-    }
-  }
-}
-
-# Render Cilium Helm chart
-data "helm_template" "cilium" {
-  name         = "cilium"
-  namespace    = "kube-system"
-  chart        = "oci://quay.io/cilium/charts/cilium"
-  version      = "1.20.1"
-  kube_version = var.talos_kubernetes_version
-
-  include_crds = true
-  skip_tests   = true
-
-  values = [
-    file("${path.module}/cilium-values.yaml"),
-    yamlencode({
-      operator = {
-        replicas = length(var.talos_control_node_ips) == 1 ? 1 : 2
-      }
-    }),
-  ]
 }
 
 # Define local variables
@@ -133,7 +86,7 @@ locals {
     }
   })
 
-  # Enable certificate rotation and enable metrics server
+  # Enable certificate rotation and install bootstrap manifests
   control_patch_metrics = yamlencode({
     machine = {
       kubelet = {
@@ -150,6 +103,15 @@ locals {
     }
   })
 
+  # Gateway API CRDs must exist before the Cilium Helm release is installed.
+  control_patch_gateway = yamlencode({
+    cluster = {
+      extraManifests = [
+        "https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.6.1/standard-install.yaml",
+      ]
+    }
+  })
+
   # Disable default CNI and kube-proxy. Will be replaced by Cilium
   control_patch_nocni = yamlencode({
     cluster = {
@@ -161,22 +123,6 @@ locals {
       proxy = {
         disabled = true
       }
-    }
-  })
-
-  # Create Cilium inline manifest
-  control_patch_cilium = yamlencode({
-    cluster = {
-      inlineManifests = [
-        {
-          name     = "gateway-api"
-          contents = data.http.gateway_api.response_body
-        },
-        {
-          name     = "cilium"
-          contents = data.helm_template.cilium.manifest
-        },
-      ]
     }
   })
 }
@@ -211,7 +157,6 @@ data "talos_machine_configuration" "control_machine_config" {
     local.control_patch_scheduling,
     local.control_patch_metrics,
     local.control_patch_nocni,
-    local.control_patch_cilium,
   ]
 }
 
@@ -231,15 +176,17 @@ resource "talos_machine_bootstrap" "bootstrap" {
   endpoint             = local.primary_control_node_ip
 }
 
-# Wait until Talos and Kubernetes are healthy
-data "talos_cluster_health" "health" {
+# Wait for Talos and the Kubernetes control plane. Kubernetes workload checks
+# cannot succeed until Cilium is installed by the next OpenTofu root.
+data "talos_cluster_health" "bootstrap_health" {
   depends_on = [
     talos_machine_bootstrap.bootstrap
   ]
 
-  client_configuration = talos_machine_secrets.machine_secrets.client_configuration
-  control_plane_nodes  = var.talos_control_node_ips
-  endpoints            = var.talos_control_node_ips
+  client_configuration   = talos_machine_secrets.machine_secrets.client_configuration
+  control_plane_nodes    = var.talos_control_node_ips
+  endpoints              = var.talos_control_node_ips
+  skip_kubernetes_checks = true
 
   timeouts = {
     read = "15m"
@@ -248,7 +195,7 @@ data "talos_cluster_health" "health" {
 
 resource "talos_cluster_kubeconfig" "kubeconfig" {
   depends_on = [
-    data.talos_cluster_health.health
+    data.talos_cluster_health.bootstrap_health
   ]
 
   client_configuration = talos_machine_secrets.machine_secrets.client_configuration
