@@ -39,7 +39,7 @@ data "http" "gateway_api" {
 data "helm_template" "cilium" {
   name         = "cilium"
   namespace    = "kube-system"
-  repository   = "oci://quay.io/cilium/charts/cilium"
+  chart        = "oci://quay.io/cilium/charts/cilium"
   version      = "1.20.1"
   kube_version = var.talos_kubernetes_version
 
