@@ -1,0 +1,7 @@
+cilium_lb_ip_pool = {
+  name  = "lan-pool"
+  start = "192.168.200.220"
+  stop  = "192.168.200.239"
+}
+
+cilium_l2_announcement_policy_name = "lan-l2-policy"
