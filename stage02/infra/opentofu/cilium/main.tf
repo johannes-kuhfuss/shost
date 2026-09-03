@@ -7,6 +7,16 @@ terraform {
       version = "3.3.0"
     }
 
+    http = {
+      source  = "hashicorp/http"
+      version = "3.6.1"
+    }
+
+    kubernetes = {
+      source  = "hashicorp/kubernetes"
+      version = "2.38.0"
+    }
+
     talos = {
       source  = "siderolabs/talos"
       version = "0.11.0"
@@ -19,6 +29,23 @@ data "terraform_remote_state" "talos" {
 
   config = {
     path = "${path.module}/../talos/terraform.tfstate"
+  }
+}
+
+data "http" "gateway_api" {
+  url = "https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.6.1/standard-install.yaml"
+
+  retry {
+    attempts     = 2
+    min_delay_ms = 1000
+    max_delay_ms = 5000
+  }
+
+  lifecycle {
+    postcondition {
+      condition     = self.status_code == 200
+      error_message = "Failed to download the Gateway API CRDs."
+    }
   }
 }
 
@@ -39,6 +66,11 @@ locals {
     for user in local.kubeconfig.users : user.user
     if user.name == local.kube_context.user
   ])
+
+  gateway_api_manifests = {
+    for manifest in provider::kubernetes::manifest_decode_multi(data.http.gateway_api.response_body) :
+    "${manifest.kind}/${manifest.metadata.name}" => manifest
+  }
 }
 
 provider "helm" {
@@ -50,7 +82,35 @@ provider "helm" {
   }
 }
 
+provider "kubernetes" {
+  host                   = local.kube_cluster.server
+  cluster_ca_certificate = base64decode(local.kube_cluster["certificate-authority-data"])
+  client_certificate     = base64decode(local.kube_user["client-certificate-data"])
+  client_key             = base64decode(local.kube_user["client-key-data"])
+}
+
+# Install the Gateway API CRDs and wait for API discovery to register them
+# before Helm renders Cilium's GatewayClass resource.
+resource "kubernetes_manifest" "gateway_api" {
+  for_each = local.gateway_api_manifests
+
+  manifest = each.value
+
+  field_manager {
+    force_conflicts = true
+  }
+
+  wait {
+    condition {
+      type   = "Established"
+      status = "True"
+    }
+  }
+}
+
 resource "helm_release" "cilium" {
+  depends_on = [kubernetes_manifest.gateway_api]
+
   name      = "cilium"
   namespace = "kube-system"
 

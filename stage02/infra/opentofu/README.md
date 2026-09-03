@@ -54,7 +54,7 @@ tofu -chdir=cilium plan
 tofu -chdir=cilium apply
 ```
 
-The Talos root waits for Talos and the Kubernetes control plane, but skips workload checks because the cluster deliberately has no CNI at that point. The Cilium root installs the chart, waits for Helm resources and jobs, and then runs the full Talos cluster-health check. A successful Cilium apply therefore means the bootstrapped cluster, CNI, and Kubernetes workloads are healthy.
+The Talos root waits for Talos and the Kubernetes control plane, but skips workload checks because the cluster deliberately has no CNI at that point. The Cilium root installs the Gateway API CRDs, waits for them to become established, installs the chart, waits for Helm resources and jobs, and then runs the full Talos cluster-health check. A successful Cilium apply therefore means the bootstrapped cluster, CNI, and Kubernetes workloads are healthy.
 
 The Helm release has `take_ownership` enabled so it can adopt Cilium resources from the earlier inline-manifest approach. After the first successful Helm apply, Cilium upgrades and removal are managed by the Cilium root.
 

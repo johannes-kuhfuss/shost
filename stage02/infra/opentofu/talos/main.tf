@@ -103,15 +103,6 @@ locals {
     }
   })
 
-  # Gateway API CRDs must exist before the Cilium Helm release is installed.
-  control_patch_gateway = yamlencode({
-    cluster = {
-      extraManifests = [
-        "https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.6.1/standard-install.yaml",
-      ]
-    }
-  })
-
   # Disable default CNI and kube-proxy. Will be replaced by Cilium
   control_patch_nocni = yamlencode({
     cluster = {
