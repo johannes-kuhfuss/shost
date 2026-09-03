@@ -37,10 +37,10 @@ data "http" "gateway_api" {
 
 # Render Cilium Helm chart
 data "helm_template" "cilium" {
-  name        = "cilium"
-  namespace   = "kube-system"
-  repository  = "oci://quay.io/cilium/charts/cilium"
-  version     = "1.20.1"
+  name         = "cilium"
+  namespace    = "kube-system"
+  repository   = "oci://quay.io/cilium/charts/cilium"
+  version      = "1.20.1"
   kube_version = var.talos_kubernetes_version
 
   include_crds = true
@@ -65,7 +65,7 @@ locals {
   cluster_endpoint = "https://${local.primary_control_node_ip}:6443"
 
   # Installation image name
-  install_image           = "factory.talos.dev/nocloud-installer-secureboot/${var.talos_image_schematic_id}:v${var.talos_version}"
+  install_image = "factory.talos.dev/nocloud-installer-secureboot/${var.talos_image_schematic_id}:v${var.talos_version}"
 
   # Additional config: Set installation disk
   control_patch_install_disk = yamlencode({
