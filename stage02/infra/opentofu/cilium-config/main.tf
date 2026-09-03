@@ -57,7 +57,7 @@ resource "kubernetes_manifest" "load_balancer_ip_pool" {
     kind       = "CiliumLoadBalancerIPPool"
 
     metadata = {
-      name = var.cilium_lb_ip_pool
+      name = var.cilium_lb_ip_pool.name
     }
 
     spec = {
