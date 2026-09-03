@@ -147,7 +147,7 @@ data "talos_machine_configuration" "control_machine_config" {
     local.control_patch_disk_encryption,
     local.control_patch_scheduling,
     local.control_patch_metrics,
-    local.control_patch_nocni,
+    #local.control_patch_nocni,
   ]
 }
 
