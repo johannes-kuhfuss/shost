@@ -4,7 +4,56 @@ terraform {
       source  = "siderolabs/talos"
       version = "0.11.0"
     }
+
+    helm = {
+      source  = "hashicorp/helm"
+      version = "3.3.0"
+    }
+
+    http = {
+      source  = "hashicorp/http"
+      version = "3.6.1"
+    }
   }
+}
+
+# Download Gateway API manifest for Cilium
+data "http" "gateway_api" {
+  url = "https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.6.1/standard-install.yaml"
+
+  retry {
+    attempts     = 2
+    min_delay_ms = 1000
+    max_delay_ms = 5000
+  }
+
+  lifecycle {
+    postcondition {
+      condition     = self.status_code == 200
+      error_message = "Failed to download the Gateway API manifest."
+    }
+  }
+}
+
+# Render Cilium Helm chart
+data "helm_template" "cilium" {
+  name        = "cilium"
+  namespace   = "kube-system"
+  repository  = "oci://quay.io/cilium/charts/cilium"
+  version     = "1.20.1"
+  kube_version = var.talos_kubernetes_version
+
+  include_crds = true
+  skip_tests   = true
+
+  values = [
+    file("${path.module}/cilium-values.yaml"),
+    yamlencode({
+      operator = {
+        replicas = length(var.talos_control_node_ips) == 1 ? 1 : 2
+      }
+    }),
+  ]
 }
 
 # Define local variables
@@ -114,6 +163,22 @@ locals {
       }
     }
   })
+
+  # Create Cilium inline manifest
+  control_patch_cilium = yamlencode({
+    cluster = {
+      inlineManifests = [
+        {
+          name     = "gateway-api"
+          contents = data.http.gateway_api.response_body
+        },
+        {
+          name     = "cilium"
+          contents = data.helm_template.cilium.manifest
+        },
+      ]
+    }
+  })
 }
 
 # Create machine secrets
@@ -145,7 +210,8 @@ data "talos_machine_configuration" "control_machine_config" {
     local.control_patch_disk_encryption,
     local.control_patch_scheduling,
     local.control_patch_metrics,
-    #local.control_patch_nocni,
+    local.control_patch_nocni,
+    local.control_patch_cilium,
   ]
 }
 
