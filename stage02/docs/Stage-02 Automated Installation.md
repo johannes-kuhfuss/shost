@@ -267,14 +267,11 @@ Go to the base folder:
 cd stage02/infra/opentofu/
 ```
 
-Copy the example files:
+Copy any missing variable files from their examples. Existing variable files
+are left unchanged:
 
 ``` bash
-cp image/terraform.tfvars.example image/terraform.tfvars
-cp vms/terraform.tfvars.example vms/terraform.tfvars
-cp talos/terraform.tfvars.example talos/terraform.tfvars
-cp cilium/terraform.tfvars.example cilium/terraform.tfvars
-cp cilium-config/terraform.tfvars.example cilium-config/terraform.tfvars
+../scripts/copy-opentofu-tfvars.sh
 ```
 
 Edit them and fill in the correct values.
