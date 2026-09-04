@@ -249,10 +249,12 @@ The image and VM roots use the provider-native `PROXMOX_VE_API_TOKEN`
 environment variable. The VM root also uses the local SSH agent with the
 Linux user configured by `proxmox_ssh_username`.
 
+Source the environment helper from the repository root. It securely prompts for
+the full API token when `PROXMOX_VE_API_TOKEN` is not already set, starts an SSH
+agent when needed, and loads the deployment key:
+
 ``` bash
-export PROXMOX_VE_API_TOKEN='opentofu@pve!token-id=token-secret'
-eval "$(ssh-agent -s)"
-ssh-add ~/.ssh/proxmox_opentofu
+source stage02/infra/scripts/setup-opentofu-env.sh
 ```
 
 The provider does not read `~/.ssh/config`.
