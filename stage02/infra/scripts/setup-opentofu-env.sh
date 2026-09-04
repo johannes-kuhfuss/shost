@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 
+PROXMOX_VE_API_TOKEN='opentofu@pve!<your token user>=<your token id>'
+
 # Source this file so the token and SSH agent variables remain available to
 # OpenTofu commands executed in the current shell.
 if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
