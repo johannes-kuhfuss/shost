@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 
 PROXMOX_VE_API_TOKEN='opentofu@pve!<your token user>=<your token id>'
+PROXMOX_VE_API_TOKEN_DEFAULT='opentofu@pve!<your token user>=<your token id>'
 
 # Source this file so the token and SSH agent variables remain available to
 # OpenTofu commands executed in the current shell.
@@ -9,15 +10,17 @@ if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
   exit 1
 fi
 
-if [[ -z "${PROXMOX_VE_API_TOKEN:-}" ]]; then
+if [[ -z "${PROXMOX_VE_API_TOKEN:-}" ||
+      "${PROXMOX_VE_API_TOKEN}" == "${PROXMOX_VE_API_TOKEN_DEFAULT}" ]]; then
   read -r -s -p \
     'Proxmox API token (opentofu@pve!<token-id>=<token-secret>): ' \
     PROXMOX_VE_API_TOKEN
   printf '\n'
 fi
 
-if [[ -z "${PROXMOX_VE_API_TOKEN}" ]]; then
-  printf 'PROXMOX_VE_API_TOKEN must not be empty.\n' >&2
+if [[ -z "${PROXMOX_VE_API_TOKEN}" ||
+      "${PROXMOX_VE_API_TOKEN}" == "${PROXMOX_VE_API_TOKEN_DEFAULT}" ]]; then
+  printf 'PROXMOX_VE_API_TOKEN must not be empty or use the default value.\n' >&2
   return 1
 fi
 
