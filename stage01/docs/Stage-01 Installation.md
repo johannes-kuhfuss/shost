@@ -939,7 +939,7 @@ kubectl -n kube-system port-forward \
   service/hubble-ui 12000:80
 ```
 
-Open a browser and point it to http://[Your IP here]:12000/
+Open a browser and point it to http://`<Your IP here>`:12000/
 
 ![Hubble ui overview](images/hubble-ui-overview.png)
 
