@@ -303,13 +303,16 @@ tofu -chdir=cilium-config apply
 
 ### Store talosconfig and kubeconfig
 
-> **Caution:** this will overwrite an existing `talosconfig` and `kubeconfig`.
+Extract the configurations with the helper script. Existing files are skipped by default:
 
 ```bash
-install -d -m 700 ~/.talos ~/.kube
-tofu -chdir=talos output -raw talosconfig > ~/.talos/config
-tofu -chdir=talos output -raw kubeconfig > ~/.kube/config
-chmod 600 ~/.talos/config ~/.kube/config
+../scripts/extract-talos-config.sh
+```
+
+To replace existing `~/.talos/config` and `~/.kube/config` files explicitly, pass the overwrite flag:
+
+```bash
+../scripts/extract-talos-config.sh --overwrite
 ```
 
 ## Tests
