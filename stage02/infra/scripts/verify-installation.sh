@@ -235,6 +235,26 @@ check_metrics_api() {
   kubectl top nodes
 }
 
+check_rollouts() {
+  local resource_type="$1"
+  local resources
+  local resource
+
+  resources="$(
+    kubectl get "${resource_type}" --namespace kube-system -o name
+  )" || return 1
+
+  if [[ -z "${resources}" ]]; then
+    printf 'No kube-system %s resources found.\n' "${resource_type}" >&2
+    return 1
+  fi
+
+  while IFS= read -r resource; do
+    kubectl rollout status "${resource}" \
+      --namespace kube-system --timeout=5m || return 1
+  done <<<"${resources}"
+}
+
 run_connectivity_test() {
   local namespace_base="shost-sanity-connectivity-$$-${RANDOM}"
   connectivity_namespace="${namespace_base}-1"
@@ -375,11 +395,9 @@ run_check 'Kubernetes contains exactly the expected control-plane nodes' \
 run_check 'All Kubernetes nodes are Ready' \
   kubectl wait --for=condition=Ready nodes --all --timeout=5m
 run_check 'All kube-system Deployments completed rollout' \
-  kubectl rollout status deployment --all \
-    --namespace kube-system --timeout=5m
+  check_rollouts deployments
 run_check 'All kube-system DaemonSets completed rollout' \
-  kubectl rollout status daemonset --all \
-    --namespace kube-system --timeout=5m
+  check_rollouts daemonsets
 run_check 'Cilium reports healthy' \
   timeout 5m cilium status --wait
 run_check 'Cilium GatewayClass is accepted' \
