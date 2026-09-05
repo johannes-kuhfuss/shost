@@ -366,7 +366,7 @@ mapfile -t expected_nodes < <(
 node_csv="$(IFS=,; printf '%s' "${expected_nodes[*]}")"
 
 run_check 'Talos and Kubernetes report healthy' \
-  talosctl --nodes "${node_csv}" health \
+  talosctl --nodes "${expected_nodes[0]}" health \
     --control-plane-nodes "${node_csv}" --wait-timeout 10m
 run_check 'Kubernetes API readiness endpoint returns ok' \
   check_kubernetes_api
