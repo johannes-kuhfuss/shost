@@ -19,10 +19,10 @@ sudo apt update
 sudo apt upgrade
 ```
 
-Install unzip, cosign, curl and git:
+Install unzip, cosign, curl, jq and git:
 
 ```bash
-sudo apt install unzip cosign curl git
+sudo apt install unzip cosign curl jq git
 ```
 
 Install the Talos control binary:
