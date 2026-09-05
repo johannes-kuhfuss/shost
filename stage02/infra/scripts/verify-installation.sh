@@ -9,7 +9,7 @@ Usage: verify-installation.sh [--extended] [--keep]
 Run post-installation sanity checks against the Stage 02 Talos cluster.
 
 Options:
-  --extended  Also run Cilium connectivity and LoadBalancer/L2 traffic tests.
+  --extended  Also run restricted-pod connectivity and LoadBalancer/L2 tests.
   --keep      Keep resources created by --extended for troubleshooting.
   -h, --help  Show this help text.
 
@@ -68,7 +68,6 @@ script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 talos_root="${script_dir}/../opentofu/talos"
 
 temporary_dir=''
-connectivity_namespace=''
 load_balancer_namespace=''
 configuration_ready=false
 
@@ -79,22 +78,14 @@ cleanup() {
   set +e
 
   if [[ "${extended}" == true && "${keep}" != true ]]; then
-    if [[ -n "${connectivity_namespace}" ]]; then
-      kubectl delete namespace "${connectivity_namespace}" \
-        --ignore-not-found --wait=false >/dev/null 2>&1 || true
-    fi
-
     if [[ -n "${load_balancer_namespace}" ]]; then
       kubectl delete namespace "${load_balancer_namespace}" \
         --ignore-not-found --wait=false >/dev/null 2>&1 || true
     fi
   elif [[ "${extended}" == true && "${keep}" == true ]]; then
     printf '\nExtended-test resources were kept for troubleshooting.\n'
-    if [[ -n "${connectivity_namespace}" ]]; then
-      printf '  Connectivity namespace: %s\n' "${connectivity_namespace}"
-    fi
     if [[ -n "${load_balancer_namespace}" ]]; then
-      printf '  LoadBalancer namespace: %s\n' "${load_balancer_namespace}"
+      printf '  Test namespace: %s\n' "${load_balancer_namespace}"
     fi
   fi
 
@@ -255,15 +246,6 @@ check_rollouts() {
   done <<<"${resources}"
 }
 
-run_connectivity_test() {
-  local namespace_base="shost-sanity-connectivity-$$-${RANDOM}"
-  connectivity_namespace="${namespace_base}-1"
-
-  timeout 20m cilium connectivity test \
-    --test-concurrency 1 \
-    --test-namespace "${namespace_base}"
-}
-
 create_load_balancer_test() {
   kubectl create namespace "${load_balancer_namespace}" >/dev/null || return 1
   kubectl label namespace "${load_balancer_namespace}" \
@@ -301,6 +283,28 @@ spec:
                 - ALL
 ---
 apiVersion: v1
+kind: Pod
+metadata:
+  name: client
+spec:
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 100
+    seccompProfile:
+      type: RuntimeDefault
+  containers:
+    - name: client
+      image: curlimages/curl:8.16.0
+      command:
+        - sleep
+        - "1800"
+      securityContext:
+        allowPrivilegeEscalation: false
+        capabilities:
+          drop:
+            - ALL
+---
+apiVersion: v1
 kind: Service
 metadata:
   name: web
@@ -315,7 +319,35 @@ spec:
 EOF
 
   kubectl rollout status deployment/web \
+    --namespace "${load_balancer_namespace}" --timeout=5m || return 1
+  kubectl wait --for=condition=Ready pod/client \
     --namespace "${load_balancer_namespace}" --timeout=5m
+}
+
+check_in_cluster_dns() {
+  kubectl exec client --namespace "${load_balancer_namespace}" -- \
+    nslookup "web.${load_balancer_namespace}.svc.cluster.local"
+}
+
+check_pod_ip_traffic() {
+  local pod_address
+
+  pod_address="$(
+    kubectl get pods --namespace "${load_balancer_namespace}" \
+      --selector app=web \
+      -o jsonpath='{.items[0].status.podIP}'
+  )" || return 1
+
+  [[ -n "${pod_address}" ]] || return 1
+  kubectl exec client --namespace "${load_balancer_namespace}" -- \
+    curl --fail --silent --show-error --max-time 10 \
+      "http://${pod_address}:8080" >/dev/null
+}
+
+check_cluster_ip_traffic() {
+  kubectl exec client --namespace "${load_balancer_namespace}" -- \
+    curl --fail --silent --show-error --max-time 10 \
+      http://web:80 >/dev/null
 }
 
 check_load_balancer_address() {
@@ -410,12 +442,15 @@ run_check 'Kubernetes metrics API returns node metrics' \
   check_metrics_api
 
 if [[ "${extended}" == true ]]; then
-  run_check 'Cilium connectivity test passes' \
-    run_connectivity_test
-
   load_balancer_namespace="shost-sanity-lb-$$-${RANDOM}"
-  run_check 'Temporary LoadBalancer workload becomes ready' \
+  run_check 'Restricted connectivity test pods become ready' \
     create_load_balancer_test
+  run_check 'Pod DNS resolves the test service' \
+    check_in_cluster_dns
+  run_check 'Pod-to-pod traffic succeeds using the pod IP' \
+    check_pod_ip_traffic
+  run_check 'Pod-to-ClusterIP service traffic succeeds' \
+    check_cluster_ip_traffic
   run_check 'Cilium assigns a LoadBalancer address' \
     check_load_balancer_address
   run_check 'Cilium creates an L2 announcement lease' \
