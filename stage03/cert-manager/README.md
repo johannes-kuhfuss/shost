@@ -200,7 +200,7 @@ helm upgrade --install cert-manager \
   --version v1.21.1 \
   --namespace cert-manager \
   --create-namespace \
-  --values values.yaml \
+  --values cert-manager/values.yaml \
   --wait \
   --timeout 10m
 
@@ -237,8 +237,8 @@ Secret is created. Retain the encrypted offline recovery copy.
 Apply the namespace and issuer first:
 
 ```bash
-kubectl apply -f manifests/namespace.yaml
-kubectl apply -f manifests/cluster-issuer.yaml
+kubectl apply -f cert-manager/manifests/namespace.yaml
+kubectl apply -f cert-manager/manifests/cluster-issuer.yaml
 kubectl wait clusterissuer/tc-jku-internal-ca \
   --for=condition=Ready \
   --timeout=2m
@@ -248,15 +248,15 @@ Apply the shared Gateway and Hubble resources
 in dependency order:
 
 ```bash
-kubectl apply -f manifests/hubble/reference-grant.yaml
-kubectl apply -f manifests/gateway.yaml
+kubectl apply -f cert-manager/manifests/hubble/reference-grant.yaml
+kubectl apply -f cert-manager/manifests/gateway.yaml
 kubectl wait -n observability certificate/hubble-tls \
   --for=create \
   --timeout=2m
 kubectl wait -n observability certificate/hubble-tls \
   --for=condition=Ready \
   --timeout=2m
-kubectl apply -f manifests/hubble/http-route.yaml
+kubectl apply -f cert-manager/manifests/hubble/http-route.yaml
 ```
 
 The Gateway can exist briefly with `ResolvedRefs=False` while cert-manager
