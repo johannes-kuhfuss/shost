@@ -1,0 +1,10 @@
+# Never commit CA private keys, CSRs, serial files, or deployment copies.
+*.key
+*.pem
+*.p12
+*.pfx
+*.csr
+*.srl
+*-deploy.*
+*-chain.*
+tc-jku-pki/

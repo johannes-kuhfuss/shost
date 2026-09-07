@@ -1,0 +1,24 @@
+# Options for the request
+[req]
+# Do not ask questions interactively
+prompt = no
+# Add DN details defined below
+distinguished_name = distinguished_name
+
+# DN details
+[distinguished_name]
+O = TC JKU Internal PKI
+CN = TC JKU Internal Intermediate CA
+
+# Intermediate CA details
+[intermediate_ca]
+# Validation enforced, Cert for a CA, no sub-CA level allowed
+basicConstraints = critical, CA:true, pathlen:0
+# For the key: Validation enforced, may sign certificates, may sign CRLs
+keyUsage = critical, keyCertSign, cRLSign
+# Create subjectKeyIdentifier
+subjectKeyIdentifier = hash
+# Create authorityKeyIdentifier, include key id, include issuer
+authorityKeyIdentifier = keyid:always, issuer
+# Validation enforced, only accepted for servers with DNS names below "tc.jku.internal"
+nameConstraints = critical, permitted;DNS:.tc.jku.internal

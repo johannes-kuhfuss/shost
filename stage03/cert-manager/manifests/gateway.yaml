@@ -1,0 +1,37 @@
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: internal-web
+  namespace: observability
+  annotations:
+    cert-manager.io/cluster-issuer: tc-jku-internal-ca
+    cert-manager.io/duration: 2160h
+    cert-manager.io/renew-before: 720h
+    cert-manager.io/private-key-algorithm: ECDSA
+    cert-manager.io/private-key-size: "256"
+    cert-manager.io/private-key-encoding: PKCS8
+    cert-manager.io/private-key-rotation-policy: Always
+    cert-manager.io/usages: digital signature,server auth
+spec:
+  gatewayClassName: cilium
+  addresses:
+    - type: IPAddress
+      value: 192.168.200.221
+  listeners:
+    - name: hubble
+      hostname: hubble.tc.jku.internal
+      port: 443
+      protocol: HTTPS
+      allowedRoutes:
+        namespaces:
+          from: Selector
+          selector:
+            matchLabels:
+              internal-web-gateway-access: "true"
+      tls:
+        mode: Terminate
+        certificateRefs:
+          - group: ""
+            kind: Secret
+            name: hubble-tls
+
