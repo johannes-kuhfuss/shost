@@ -143,10 +143,10 @@ Set to “Do not use any media” and confirm.
 
 Install a Linux box using the latest Ubuntu LTS.
 
-Install curl and yq.
+Install curl, yq and git.
 
 ```bash
-sudo apt install curl yq -y
+sudo apt install curl yq git -y
 ```
 
 Install the Talos control binary (<https://docs.siderolabs.com/talos/v1.14/getting-started/talosctl>).
@@ -741,6 +741,9 @@ resources:
 
 patches:
   - path: configmap-patch.yaml
+  - path: deployment-patch.yaml
+  - path: storageclass-patch.yaml
+  - path: namespace-patch.yaml
 ```
 
 Create `configmap-patch.yaml`.
@@ -765,6 +768,60 @@ data:
     }
 ```
 
+Create `deployment-patch.yaml` so the long-running provisioner controller meets
+the restricted Pod Security Standard.
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: local-path-provisioner
+  namespace: local-path-storage
+spec:
+  template:
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: local-path-provisioner
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+            readOnlyRootFilesystem: true
+            runAsUser: 65534
+            runAsGroup: 65534
+```
+
+Create `storageclass-patch.yaml` to make `local-path` the default StorageClass.
+This is optional if claims will always set `storageClassName` explicitly or if
+another StorageClass should be the default.
+
+```yaml
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: local-path
+  annotations:
+    storageclass.kubernetes.io/is-default-class: "true"
+```
+
+Create `namespace-patch.yaml`. Local Path Provisioner creates helper pods with
+`hostPath` volumes, which require the privileged Pod Security profile. Keep this
+exception scoped to the provisioner's namespace.
+
+```yaml
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: local-path-storage
+  labels:
+    pod-security.kubernetes.io/enforce: privileged
+```
+
 Install the provisioner.
 
 ```bash
@@ -772,9 +829,9 @@ kubectl apply -k .
 kubectl --namespace local-path-storage rollout status deployment/local-path-provisioner
 ```
 
-Verify the provisioner pod and StorageClass. The StorageClass deliberately uses
-`WaitForFirstConsumer`, so Kubernetes selects a node only after a Pod consumes
-the claim.
+Verify the provisioner pod and StorageClass. The StorageClass is marked as the
+default and uses `WaitForFirstConsumer`, so Kubernetes selects a node only after
+a Pod consumes the claim.
 
 ```bash
 kubectl --namespace local-path-storage get pods

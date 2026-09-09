@@ -6,3 +6,6 @@ resources:
 
 patches:
   - path: configmap-patch.yaml
+  - path: deployment-patch.yaml
+  - path: storageclass-patch.yaml
+  - path: namespace-patch.yaml
