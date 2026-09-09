@@ -248,10 +248,10 @@ export INSTALL_DISK=/dev/sda
 export INSTALL_IMAGE=factory.talos.dev/nocloud-installer-secureboot/ce4c980550dd2ab1b17bbf2b08801c7eb59418eafe8f279833297925d67c7515:v1.14.0
 ```
 
-Talos v1.14 defaults to Kubernetes 1.37. Cilium 1.20.1 guarantees support through Kubernetes 1.36, so select the latest supported Kubernetes 1.36 patch release.
+Talos v1.14 defaults to Kubernetes 1.37. Cilium 1.20.1 guarantees support through Kubernetes 1.36, so select the latest supported Kubernetes 1.36 patch release, if you want compatibility.
 
 ```bash
-export KUBERNETES_VERSION=1.36.4
+export KUBERNETES_VERSION=1.37.0
 ```
 
 Generate the cluster secrets.
@@ -348,6 +348,28 @@ apiVersion: v1alpha1
 kind: KubeletConfig
 config:
   serverTLSBootstrap: true
+```
+
+### Local storage
+
+To add support for local storage (later provisioned by the local-path-provisioner) a user volume must be created. Create "patches/patch-local-storage.yaml".
+
+```yaml
+# Create user volume on the 2nd disk
+apiVersion: v1alpha1
+kind: UserVolumeConfig
+name: local-storage
+provisioning:
+  diskSelector:
+    match: "!system_disk && disk.size >= 10u * GB"
+  minSize: 10GB
+  grow: true
+encryption:
+  provider: luks2
+  keys:
+    - slot: 0
+      tpm: {}
+      lockToState: true
 ```
 
 Create “patches/patch-metrics-server.yaml” for the manifests that the controlplane installs.
@@ -551,6 +573,7 @@ talosctl machineconfig patch controlplane.yaml \
   -p @patches/patch-kubelet-serving-cert.yaml \
   -p @patches/patch-controlplane-run.yaml \
   -p @patches/patch-metrics-server.yaml \
+  -p @patches/patch-local-storage.yaml \
   -p @patches/patch-no-cni.yaml \
   -p @patches/patch-gateway-api.yaml \
   -p @patches/patch-cilium.yaml \
@@ -564,6 +587,7 @@ talosctl machineconfig patch worker.yaml \
   -p @patches/patch-network-dev.yaml \
   -p @patches/patch-tpm-disk-enc.yaml \
   -p @patches/patch-kubelet-serving-cert.yaml \
+  -p @patches/patch-local-storage.yaml \
   -o worker-patched.yaml
 ```
 
@@ -665,8 +689,8 @@ spec:
 Apply the files.
 
 ```bash
-kubectl apply -f infra/cilium/lb_ip_pool.yaml
-kubectl apply -f infra/cilium/lb_l2_policy.yaml
+kubectl apply -f ../cilium/lb_ip_pool.yaml
+kubectl apply -f ../cilium/lb_l2_policy.yaml
 ```
 
 Verify.
@@ -682,6 +706,152 @@ kubectl get ciliuml2announcementpolicies
 ```
 
 ![Cilium l2 announcement policy status](images/cilium-l2-announcement-policy-status.png)
+
+## Install local-path-provisioner
+
+Before installing the provisioner, check that the user volume is ready on every node.
+
+```bash
+talosctl --nodes 192.168.200.201,192.168.200.202,192.168.200.203 \
+  get volumestatus u-local-storage
+```
+
+![User Volume Present](images/uservol-present.png)
+
+Check that the user volume is mounted at `/var/mnt/local-storage` on every node.
+
+```bash
+talosctl --nodes 192.168.200.201,192.168.200.202,192.168.200.203 \
+  get mountstatus u-local-storage
+```
+
+![User Volume Mounted](images/uservol-mounts.png)
+
+Folder: `./infra/local-path-provisioner`
+
+Use a Kustomize overlay to pin local-path-provisioner and change its default
+storage location to the Talos user volume. Create `kustomization.yaml`.
+
+```yaml
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - github.com/rancher/local-path-provisioner/deploy?ref=v0.0.37
+
+patches:
+  - path: configmap-patch.yaml
+```
+
+Create `configmap-patch.yaml`.
+
+```yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: local-path-config
+  namespace: local-path-storage
+data:
+  config.json: |-
+    {
+      "nodePathMap": [
+        {
+          "node": "DEFAULT_PATH_FOR_NON_LISTED_NODES",
+          "paths": [
+            "/var/mnt/local-storage"
+          ]
+        }
+      ]
+    }
+```
+
+Install the provisioner.
+
+```bash
+kubectl apply -k .
+kubectl --namespace local-path-storage rollout status deployment/local-path-provisioner
+```
+
+Verify the provisioner pod and StorageClass. The StorageClass deliberately uses
+`WaitForFirstConsumer`, so Kubernetes selects a node only after a Pod consumes
+the claim.
+
+```bash
+kubectl --namespace local-path-storage get pods
+kubectl get storageclass local-path
+```
+
+The requested PVC capacity is not enforced by local-path-provisioner. All
+volumes on a node share the space in `/var/mnt/local-storage`.
+
+### Test local storage provisioning
+
+Folder: `./infra/tests`
+
+Create `local-storage.yaml` with a PVC and a Pod that writes to it.
+
+```yaml
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: local-storage-test
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: local-path
+  resources:
+    requests:
+      storage: 1Gi
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: local-storage-test
+spec:
+  securityContext:
+    runAsNonRoot: true
+    seccompProfile:
+      type: RuntimeDefault
+  containers:
+    - name: test
+      image: docker.io/library/busybox:1.37.0
+      command:
+        - sh
+        - -c
+        - echo "local-path-provisioner works" > /data/result && sleep 3600
+      securityContext:
+        allowPrivilegeEscalation: false
+        capabilities:
+          drop:
+            - ALL
+        runAsUser: 1000
+      volumeMounts:
+        - name: data
+          mountPath: /data
+  volumes:
+    - name: data
+      persistentVolumeClaim:
+        claimName: local-storage-test
+```
+
+Create the resources, wait for them to become ready, and read the file from the
+provisioned volume.
+
+```bash
+kubectl apply -f local-storage.yaml
+kubectl wait --for=jsonpath='{.status.phase}'=Bound \
+  persistentvolumeclaim/local-storage-test --timeout=60s
+kubectl wait --for=condition=Ready pod/local-storage-test --timeout=120s
+kubectl get persistentvolumeclaim,persistentvolume
+kubectl exec local-storage-test -- cat /data/result
+```
+
+The final command should print `local-path-provisioner works`. Remove the test
+resources afterwards; the `Delete` reclaim policy also removes its directory.
+
+```bash
+kubectl delete -f local-storage.yaml
+```
 
 ## Sanity Checks
 

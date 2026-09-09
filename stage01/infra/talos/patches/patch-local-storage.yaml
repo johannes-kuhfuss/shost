@@ -1,0 +1,15 @@
+# Create user volume on the 2nd disk
+apiVersion: v1alpha1
+kind: UserVolumeConfig
+name: local-storage
+provisioning:
+  diskSelector:
+    match: "!system_disk && disk.size >= 10u * GB"
+  minSize: 10GB
+  grow: true
+encryption:
+  provider: luks2
+  keys:
+    - slot: 0
+      tpm: {}
+      lockToState: true
