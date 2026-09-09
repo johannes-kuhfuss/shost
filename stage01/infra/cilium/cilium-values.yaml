@@ -10,7 +10,7 @@
 # - Cilium L2 Announcements enabled
 # - Hubble + Relay + UI enabled
 #
-# Intended for Cilium 1.20.x.
+# Intended for Cilium 1.20.1.
 
 # ---------------------------------------------------------------------------
 # Talos-specific settings
@@ -30,6 +30,11 @@ cgroup:
   autoMount:
     enabled: false
   hostRoot: /sys/fs/cgroup
+
+# Talos forwards kube-dns to its host DNS resolver. Cilium's legacy host
+# routing is required for that traffic path.
+bpf:
+  hostLegacyRouting: true
 
 # Talos does not permit Kubernetes workloads to load kernel modules,
 # so SYS_MODULE is deliberately omitted.

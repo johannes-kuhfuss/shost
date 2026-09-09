@@ -5,13 +5,13 @@ The installation uses Proxmox Virtualization (<https://www.proxmox.com/en/produc
 
 ## Sources
 
-<https://docs.siderolabs.com/talos/v1.13/platform-specific-installations/virtualized-platforms/proxmox>
+<https://docs.siderolabs.com/talos/v1.14/platform-specific-installations/virtualized-platforms/proxmox>
 
-<https://docs.siderolabs.com/talos/v1.13/getting-started/getting-started>
+<https://docs.siderolabs.com/talos/v1.14/getting-started/getting-started>
 
-<https://docs.siderolabs.com/talos/v1.13/getting-started/prodnotes>
+<https://docs.siderolabs.com/talos/v1.14/getting-started/prodnotes>
 
-<https://docs.siderolabs.com/talos/v1.13/configure-your-talos-cluster/system-configuration/patching>
+<https://docs.siderolabs.com/talos/v1.14/configure-your-talos-cluster/system-configuration/patching>
 
 ## Create Talos ISO
 
@@ -21,7 +21,7 @@ On the “Hardware Type“ dialog, select “Cloud Server“ and select “Next�
 
 ![Talos image factory hardware type](images/talos-image-factory-hardware-type.png)
 
-On the “Choose Talos Linux Version” dialog, choose the latest version (v1.13.8 at the time of writing) and select “Next“.
+On the “Choose Talos Linux Version” dialog, choose the latest version (v1.14.0 at the time of writing) and select “Next“.
 
 ![Talos image factory version](images/talos-image-factory-version.png)
 
@@ -41,13 +41,13 @@ On the “Customization” dialog, set “Bootloader” to “auto”. Select �
 
 ![Talos image factory bootloader auto](images/talos-image-factory-bootloader-auto.png)
 
-Download the secure boot ISO: <https://factory.talos.dev/image/ce4c980550dd2ab1b17bbf2b08801c7eb59418eafe8f279833297925d67c7515/v1.13.8/nocloud-amd64-secureboot.iso>
+Download the secure boot ISO: <https://factory.talos.dev/image/ce4c980550dd2ab1b17bbf2b08801c7eb59418eafe8f279833297925d67c7515/v1.14.0/nocloud-amd64-secureboot.iso>
 
 Note down
 
 - The “image Schematic ID”: ce4c980550dd2ab1b17bbf2b08801c7eb59418eafe8f279833297925d67c7515
 
-- The initial installation image: factory.talos.dev/nocloud-installer-secureboot/ce4c980550dd2ab1b17bbf2b08801c7eb59418eafe8f279833297925d67c7515:v1.13.8
+- The initial installation image: factory.talos.dev/nocloud-installer-secureboot/ce4c980550dd2ab1b17bbf2b08801c7eb59418eafe8f279833297925d67c7515:v1.14.0
 
 ## Upload ISO to Proxmox
 
@@ -143,13 +143,13 @@ Set to “Do not use any media” and confirm.
 
 Install a Linux box using the latest Ubuntu LTS.
 
-Install curl.
+Install curl and yq.
 
 ```bash
-sudo apt install curl
+sudo apt install curl yq -y
 ```
 
-Install the Talos control binary (<https://docs.siderolabs.com/talos/v1.13/getting-started/talosctl>).
+Install the Talos control binary (<https://docs.siderolabs.com/talos/v1.14/getting-started/talosctl>).
 
 ```bash
 curl -sL https://talos.dev/install | sh
@@ -167,18 +167,19 @@ Make the binary executable and move it to /usr/bin/local.
 sudo install -o root -g root -m 0755 kubectl /usr/local/bin/kubectl
 ```
 
+Remove the local copy
+
+```bash
+rm kubectl
+```
+
 Install Helm.
 
 ```bash
 curl -fsSL -o get_helm.sh https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-4
 chmod 700 get_helm.sh
 ./get_helm.sh
-```
-
-Install yq.
-
-```bash
-sudo apt install yq -y
+rm get_helm.sh
 ```
 
 Install Cilium CLI.
@@ -232,6 +233,27 @@ tc.jku.internal IN A 192.168.200.202
 tc.jku.internal IN A 192.168.200.203
 ```
 
+Check the installation disk name of the VM.
+
+```bash
+talosctl get disks --insecure --nodes 192.168.200.201
+```
+
+![Talosctl disks](images/talosctl-disks.png)
+
+Export the installation disk and the Image Factory installer gathered earlier.
+
+```bash
+export INSTALL_DISK=/dev/sda
+export INSTALL_IMAGE=factory.talos.dev/nocloud-installer-secureboot/ce4c980550dd2ab1b17bbf2b08801c7eb59418eafe8f279833297925d67c7515:v1.14.0
+```
+
+Talos v1.14 defaults to Kubernetes 1.37. Cilium 1.20.1 guarantees support through Kubernetes 1.36, so select the latest supported Kubernetes 1.36 patch release.
+
+```bash
+export KUBERNETES_VERSION=1.36.4
+```
+
 Generate the cluster secrets.
 
 ```bash
@@ -244,45 +266,20 @@ Export your cluster name into an environment variable.
 export CLUSTER_NAME=talos-cluster
 ```
 
-Generate the basic configuration.
+Generate the basic configuration. Passing the installation disk and custom Image Factory installer here creates Talos v1.14's `UnattendedInstallConfig` directly.
 
 ```bash
-talosctl gen config --with-secrets secrets.yaml $CLUSTER_NAME $MY_ENDPOINT
+talosctl gen config \
+  --with-secrets secrets.yaml \
+  --install-disk "$INSTALL_DISK" \
+  --install-image "$INSTALL_IMAGE" \
+  --kubernetes-version "$KUBERNETES_VERSION" \
+  "$CLUSTER_NAME" "$MY_ENDPOINT"
 ```
 
 ## Patch the configuration
 
 Create a new folder “patches”.
-
-### Installation Disk Patch
-
-Check the disk names of the VM
-
-```bash
-talosctl get disks --insecure --nodes 192.168.200.201
-```
-
-![Talosctl disks](images/talosctl-disks.png)
-
-Create “patches/patch-disk.yaml” and replace “/dev/sda” with your installation disk.
-
-```yaml
-# Set installation disk
-machine:
-  install:
-    disk: /dev/sda
-```
-
-### Installation Image Patch
-
-Create “patches/patch-installation-image.yaml” and replace the URL after “image:” with the URL you gathered from the image factory.
-
-```yaml
-# Set the installation image used. Needs the secureboot variety, if secureboot is used
-machine:
-  install:
-    image: factory.talos.dev/nocloud-installer-secureboot/ce4c980550dd2ab1b17bbf2b08801c7eb59418eafe8f279833297925d67c7515:v1.13.8
-```
 
 ### Network Device Patch
 
@@ -297,12 +294,10 @@ talosctl --nodes 192.168.200.201 get links --insecure
 Create “patches/patch-network-dev.yaml” and replace “eth0” with your network interface.
 
 ```yaml
-# Set network interface
-machine:
-  network:
-    interfaces:
-      - interface: eth0
-        dhcp: true
+# Enable DHCPv4 on the network interface
+apiVersion: v1alpha1
+kind: DHCPv4Config
+name: eth0
 ```
 
 ### Enable Disk Encryption with TPM
@@ -311,18 +306,23 @@ Create “patches/patch-tpm-disk-enc.yaml”.
 
 ```yaml
 # Enable TPM-based disk encryption
-machine:
-  systemDiskEncryption:
-    ephemeral:
-      provider: luks2
-      keys:
-        - slot: 0
-          tpm: {}
-    state:
-      provider: luks2
-      keys:
-        - slot: 0
-          tpm: {}
+apiVersion: v1alpha1
+kind: VolumeConfig
+name: STATE
+encryption:
+  provider: luks2
+  keys:
+    - slot: 0
+      tpm: {}
+---
+apiVersion: v1alpha1
+kind: VolumeConfig
+name: EPHEMERAL
+encryption:
+  provider: luks2
+  keys:
+    - slot: 0
+      tpm: {}
 ```
 
 ### Allow workloads on controlplanes
@@ -331,24 +331,38 @@ To allow running workloads on the controlplane nodes, create “patches/patch-co
 
 ```yaml
 # Enable running workloads on controlplane nodes
-cluster:
-    allowSchedulingOnControlPlanes: true
+apiVersion: v1alpha1
+kind: KubeNodeConfig
+taints:
+  node-role.kubernetes.io/control-plane:
+    $patch: delete
 ```
 
-### Metrics server with certificate rotation
+### Kubelet serving certificate rotation
 
-To use the metrics server, certificate rotation must be enabled. Create “patches/patch-metrics-server.yaml”
+To use the metrics server, kubelet serving certificate rotation must be enabled on every node. Create “patches/patch-kubelet-serving-cert.yaml”.
 
 ```yaml
-# Enable certificate rotation and install metrics server
-machine:
-  kubelet:
-    extraArgs:
-      rotate-server-certificates: true
-cluster:
-  extraManifests:
-    - https://raw.githubusercontent.com/alex1989hu/kubelet-serving-cert-approver/main/deploy/standalone-install.yaml
-    - https://github.com/kubernetes-sigs/metrics-server/releases/latest/download/components.yaml
+# Request and rotate the kubelet serving certificate
+apiVersion: v1alpha1
+kind: KubeletConfig
+config:
+  serverTLSBootstrap: true
+```
+
+Create “patches/patch-metrics-server.yaml” for the manifests that the controlplane installs.
+
+```yaml
+# Install the kubelet serving certificate approver and metrics server
+apiVersion: v1alpha1
+kind: KubeExternalManifestConfig
+name: kubelet-serving-cert-approver
+url: https://raw.githubusercontent.com/alex1989hu/kubelet-serving-cert-approver/main/deploy/standalone-install.yaml
+---
+apiVersion: v1alpha1
+kind: KubeExternalManifestConfig
+name: metrics-server
+url: https://github.com/kubernetes-sigs/metrics-server/releases/latest/download/components.yaml
 ```
 
 ### Disable default CNI
@@ -357,12 +371,13 @@ To use Cilium (installed later), you need to disable the default CNI and kube-pr
 
 ```yaml
 # Disable default CNI and kube-proxy. Will be replaced by Cilium
-cluster:
-  network:
-    cni:
-      name: none
-  proxy:
-    disabled: true
+apiVersion: v1alpha1
+kind: KubeProxyConfig
+enabled: false
+---
+apiVersion: v1alpha1
+kind: KubeFlannelCNIConfig
+$patch: delete
 ```
 
 ### Cilium Configuration
@@ -390,7 +405,7 @@ Now create the cilium-values.yaml with the following contents.
 # - Cilium L2 Announcements enabled
 # - Hubble + Relay + UI enabled
 #
-# Intended for Cilium 1.20.x.
+# Intended for Cilium 1.20.1.
 
 # ---------------------------------------------------------------------------
 # Talos-specific settings
@@ -410,6 +425,11 @@ cgroup:
   autoMount:
     enabled: false
   hostRoot: /sys/fs/cgroup
+
+# Talos forwards kube-dns to its host DNS resolver. Cilium's legacy host
+# routing is required for that traffic path.
+bpf:
+  hostLegacyRouting: true
 
 # Talos does not permit Kubernetes workloads to load kernel modules,
 # so SYS_MODULE is deliberately omitted.
@@ -503,15 +523,21 @@ Now create the Helm template for Cilium.
 ```bash
 helm repo add cilium https://helm.cilium.io/
 helm repo update
-helm template cilium cilium/cilium --version 1.20.0 --namespace kube-system --values cilium-values.yaml > cilium.yaml
+helm template cilium cilium/cilium --version 1.20.1 --namespace kube-system --values cilium-values.yaml > cilium.yaml
 ```
 
 Folder: `./infra/talos`
 
-Combine all the files into the patch needed for Talos.
+Wrap the Gateway API and Cilium manifests in separate Talos v1.14 inline-manifest patches.
 
 ```bash
-yq -n --rawfile gateway ../cilium/gateway-api.yaml --rawfile cilium ../cilium/cilium.yaml '{ "cluster": { "inlineManifests": [ { "name": "gateway-api", "contents": $gateway }, { "name": "cilium", "contents": $cilium } ] } }' > "patches/patch-cilium.yaml"
+yq -n --rawfile manifest ../cilium/gateway-api.yaml \
+  '{ "apiVersion": "v1alpha1", "kind": "KubeInlineManifestConfig", "name": "gateway-api", "manifest": $manifest }' \
+  > patches/patch-gateway-api.yaml
+
+yq -n --rawfile manifest ../cilium/cilium.yaml \
+  '{ "apiVersion": "v1alpha1", "kind": "KubeInlineManifestConfig", "name": "cilium", "manifest": $manifest }' \
+  > patches/patch-cilium.yaml
 ```
 
 ### Consolidate configuration into single file
@@ -519,13 +545,33 @@ yq -n --rawfile gateway ../cilium/gateway-api.yaml --rawfile cilium ../cilium/ci
 Patch controlplane.yaml.
 
 ```bash
-talosctl machineconfig patch controlplane.yaml -p @patches/patch-disk.yaml -p @patches/patch-installation-image.yaml -p @patches/patch-network-dev.yaml -p @patches/patch-tpm-disk-enc.yaml -p @patches/patch-controlplane-run.yaml -p @patches/patch-metrics-server.yaml -p @patches/patch-no-cni.yaml -p @patches/patch-cilium.yaml -o controlplane-patched.yaml
+talosctl machineconfig patch controlplane.yaml \
+  -p @patches/patch-network-dev.yaml \
+  -p @patches/patch-tpm-disk-enc.yaml \
+  -p @patches/patch-kubelet-serving-cert.yaml \
+  -p @patches/patch-controlplane-run.yaml \
+  -p @patches/patch-metrics-server.yaml \
+  -p @patches/patch-no-cni.yaml \
+  -p @patches/patch-gateway-api.yaml \
+  -p @patches/patch-cilium.yaml \
+  -o controlplane-patched.yaml
 ```
 
 Patch worker.yaml.
 
 ```bash
-talosctl machineconfig patch worker.yaml -p @patches/patch-disk.yaml -p @patches/patch-installation-image.yaml -p @patches/patch-network-dev.yaml -p @patches/patch-tpm-disk-enc.yaml -p @patches/patch-metrics-server.yaml -p @patches/patch-no-cni.yaml -o worker-patched.yaml
+talosctl machineconfig patch worker.yaml \
+  -p @patches/patch-network-dev.yaml \
+  -p @patches/patch-tpm-disk-enc.yaml \
+  -p @patches/patch-kubelet-serving-cert.yaml \
+  -o worker-patched.yaml
+```
+
+Validate both configurations before applying them.
+
+```bash
+talosctl validate --config controlplane-patched.yaml --mode metal --strict
+talosctl validate --config worker-patched.yaml --mode metal --strict
 ```
 
 ## Apply the configuration

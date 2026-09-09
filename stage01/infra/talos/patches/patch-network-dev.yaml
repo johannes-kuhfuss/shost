@@ -1,6 +1,4 @@
-# Set network interface
-machine:
-  network:
-    interfaces:
-      - interface: eth0
-        dhcp: true
+# Enable DHCPv4 on the network interface
+apiVersion: v1alpha1
+kind: DHCPv4Config
+name: eth0

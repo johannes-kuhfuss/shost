@@ -1,0 +1,5 @@
+# Request and rotate the kubelet serving certificate
+apiVersion: v1alpha1
+kind: KubeletConfig
+config:
+  serverTLSBootstrap: true
