@@ -41,6 +41,11 @@ variable "talos_nodes" {
     condition     = length(var.talos_nodes) >= 3
     error_message = "talos_nodes must define at least three candidate nodes."
   }
+
+  validation {
+    condition     = alltrue([for node in values(var.talos_nodes) : node.data_disk_size >= 10])
+    error_message = "Every Talos node data_disk_size must be at least 10 GiB for the local-storage user volume."
+  }
 }
 
 variable "talos_node_count" {

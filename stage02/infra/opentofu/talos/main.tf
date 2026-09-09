@@ -79,6 +79,32 @@ locals {
     }
   })
 
+  # Create an encrypted user volume on the non-system disk for local storage
+  control_patch_local_storage = yamlencode({
+    apiVersion = "v1alpha1"
+    kind       = "UserVolumeConfig"
+    name       = "local-storage"
+
+    provisioning = {
+      diskSelector = {
+        match = "!system_disk && disk.size >= 10u * GB"
+      }
+      minSize = "10GB"
+      grow    = true
+    }
+
+    encryption = {
+      provider = "luks2"
+      keys = [
+        {
+          slot        = 0
+          tpm         = {}
+          lockToState = true
+        }
+      ]
+    }
+  })
+
   # Additional config: Enable running workloads on controlplane nodes
   control_patch_scheduling = yamlencode({
     cluster = {
@@ -145,6 +171,7 @@ data "talos_machine_configuration" "control_machine_config" {
     local.control_patch_install_image,
     local.control_patch_network,
     local.control_patch_disk_encryption,
+    local.control_patch_local_storage,
     local.control_patch_scheduling,
     local.control_patch_metrics,
     local.control_patch_nocni,

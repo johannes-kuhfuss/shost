@@ -226,6 +226,27 @@ check_metrics_api() {
   kubectl top nodes
 }
 
+check_local_storage_volume() {
+  local node
+
+  for node in "${expected_nodes[@]}"; do
+    talosctl --nodes "${node}" get volumestatus u-local-storage || return 1
+    talosctl --nodes "${node}" get mountstatus u-local-storage || return 1
+  done
+}
+
+check_local_path_provisioner() {
+  kubectl rollout status deployment/local-path-provisioner \
+    --namespace local-path-storage --timeout=5m
+}
+
+check_local_path_storage_class() {
+  kubectl get storageclass local-path -o json | jq -e \
+    '.provisioner == "rancher.io/local-path"
+     and .metadata.annotations["storageclass.kubernetes.io/is-default-class"] == "true"
+     and .volumeBindingMode == "WaitForFirstConsumer"' >/dev/null
+}
+
 check_rollouts() {
   local resource_type="$1"
   local resources
@@ -402,6 +423,61 @@ check_load_balancer_traffic() {
   curl --fail --show-error --max-time 10 "http://${service_address}" >/dev/null
 }
 
+create_local_storage_test() {
+  kubectl apply --namespace "${load_balancer_namespace}" -f - <<'EOF' || return 1
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: local-storage-test
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: local-path
+  resources:
+    requests:
+      storage: 1Gi
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: local-storage-test
+spec:
+  securityContext:
+    runAsNonRoot: true
+    seccompProfile:
+      type: RuntimeDefault
+  containers:
+    - name: test
+      image: docker.io/library/busybox:1.37.0
+      command:
+        - sh
+        - -c
+        - echo "local-path-provisioner works" > /data/result && sleep 1800
+      securityContext:
+        allowPrivilegeEscalation: false
+        capabilities:
+          drop:
+            - ALL
+        runAsUser: 1000
+      volumeMounts:
+        - name: data
+          mountPath: /data
+  volumes:
+    - name: data
+      persistentVolumeClaim:
+        claimName: local-storage-test
+EOF
+
+  kubectl wait --for=condition=Ready pod/local-storage-test \
+    --namespace "${load_balancer_namespace}" --timeout=5m
+}
+
+check_local_storage_data() {
+  [[ "$(kubectl exec local-storage-test \
+    --namespace "${load_balancer_namespace}" -- cat /data/result)" == \
+    'local-path-provisioner works' ]]
+}
+
 umask 077
 temporary_dir="$(mktemp -d)"
 
@@ -440,6 +516,12 @@ run_check 'At least one Cilium L2 announcement policy exists' \
   check_l2_policies
 run_check 'Kubernetes metrics API returns node metrics' \
   check_metrics_api
+run_check 'Talos local-storage volume exists and is mounted on every node' \
+  check_local_storage_volume
+run_check 'Local Path Provisioner completed rollout' \
+  check_local_path_provisioner
+run_check 'Local Path StorageClass is the default and waits for a consumer' \
+  check_local_path_storage_class
 
 if [[ "${extended}" == true ]]; then
   load_balancer_namespace="shost-sanity-lb-$$-${RANDOM}"
@@ -457,6 +539,10 @@ if [[ "${extended}" == true ]]; then
     check_l2_lease
   run_check 'LoadBalancer address serves HTTP from the deployment machine' \
     check_load_balancer_traffic
+  run_check 'Local storage test pod and PVC become ready' \
+    create_local_storage_test
+  run_check 'Local storage preserves data written by the test pod' \
+    check_local_storage_data
 fi
 
 printf '\nAll %d sanity checks passed.\n' "${checks_passed}"

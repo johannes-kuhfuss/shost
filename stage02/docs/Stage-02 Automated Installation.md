@@ -7,6 +7,7 @@
 - <https://www.jonashietala.se/blog/2026/05/22/talos_linux_on_proxmox_with_terraform/>
 - <https://opentofu.org/docs/intro/install/standalone/>
 - <https://docs.siderolabs.com/talos/v1.13/getting-started/talosctl>
+- <https://github.com/rancher/local-path-provisioner/tree/v0.0.37/deploy/chart/local-path-provisioner>
 
 ## Prepare a deployment machine
 
@@ -221,6 +222,7 @@ The infrastructure is split into independently managed root modules with separat
 - `vms/` creates Talos VMs and reads the image file ID from `image/terraform.tfstate`.
 - `talos/` configures and bootstraps Talos, then produces the Kubernetes credentials.
 - `cilium/` installs Cilium with Helm and waits for the complete cluster to become healthy.
+- `local-path-provisioner/` installs the default local StorageClass backed by each node's encrypted data disk.
 - `cilium-config/` configures the Cilium load-balancer IP pool and L2 announcements.
 
 Destroying one root does not automatically destroy resources owned by another root.
@@ -293,6 +295,20 @@ tofu -chdir=cilium plan
 tofu -chdir=cilium apply
 ```
 
+Install Local Path Provisioner:
+
+```bash
+tofu -chdir=local-path-provisioner init
+tofu -chdir=local-path-provisioner plan
+tofu -chdir=local-path-provisioner apply
+```
+
+The provisioner uses the encrypted Talos user volume mounted at
+`/var/mnt/local-storage` on every node. The `local-path` StorageClass is the
+cluster default and uses `WaitForFirstConsumer`. Requested PVC capacity is not
+enforced individually; all local volumes on a node share the space on that
+node's data disk.
+
 Configure Cilium:
 
 ```bash
@@ -317,12 +333,26 @@ To replace existing `~/.talos/config` and `~/.kube/config` files explicitly, pas
 
 ## Tests
 
+Run the read-only installation checks:
+
+```bash
+stage02/infra/scripts/verify-installation.sh
+```
+
+Also provision a PVC, write and read test data, and exercise cluster networking
+and load balancing:
+
+```bash
+stage02/infra/scripts/verify-installation.sh --extended
+```
+
 ## Clean-up
 
 Destroy in reverse order so Helm can still reach the Kubernetes API while uninstalling Cilium:
 
 ```bash
 tofu -chdir=cilium-config destroy
+tofu -chdir=local-path-provisioner destroy
 tofu -chdir=cilium destroy
 tofu -chdir=talos destroy
 tofu -chdir=vms destroy
