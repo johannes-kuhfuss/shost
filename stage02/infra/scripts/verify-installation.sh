@@ -242,7 +242,7 @@ check_local_path_provisioner() {
 
 check_local_path_storage_class() {
   kubectl get storageclass local-path -o json | jq -e \
-    '.provisioner == "rancher.io/local-path"
+    '.provisioner == "cluster.local/local-path-provisioner"
      and .metadata.annotations["storageclass.kubernetes.io/is-default-class"] == "true"
      and .volumeBindingMode == "WaitForFirstConsumer"' >/dev/null
 }
