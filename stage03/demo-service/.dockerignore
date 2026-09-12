@@ -1,0 +1,5 @@
+.git
+.env
+cert/
+Dockerfile*
+README.md

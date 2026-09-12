@@ -1,0 +1,128 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: demo-service
+  labels:
+    internal-web-gateway-access: "true"
+    # Uncomment next line to actually reject pod if insecure
+    #pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/warn: restricted
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: demo-service
+  namespace: demo-service
+spec:
+  replicas: 1
+  # Limit revision history to limit clutter
+  revisionHistoryLimit: 3
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: demo-service
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: demo-service
+    spec:
+      securityContext:
+        # Comply with PSA Restricted 
+        # Do not run as root
+        runAsNonRoot: true
+        # Specify user and group, same as in Dockerfile
+        runAsUser: 65532
+        runAsGroup: 65532
+        # Use default seccomp profile
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: demo-service
+          image: docker.io/johanneskuhfuss/demo-service:latest
+          imagePullPolicy: IfNotPresent
+
+          # Specify environement variables
+          env:
+            - name: SERVER_HOST
+              value: "0.0.0.0"
+            - name: SERVER_PORT
+              value: "8080"
+            - name: USE_TLS
+              value: "false"
+            - name: GIN_MODE
+              value: "release"
+
+          # Expose ports
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+
+          # Define startup probe (Has the app finished starting?)
+          # Customarily exposed at /startupz
+          # Default to healthz endpoint for now
+          startupProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            # Tune the following to your service
+            periodSeconds: 5
+            timeoutSeconds: 2
+            failureThreshold: 30
+
+          # Define readiness probe (can this service receive traffic?)
+          # Customarily exposed at /healthz
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            # Tune the following to your service
+            periodSeconds: 5
+            timeoutSeconds: 2
+            failureThreshold: 2
+
+          # Define liveness probe (is the app live / not stuck?)
+          # Usually exposed at /livez
+          # Default to healthz endpoint for now
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            # Tune the following to your service
+            periodSeconds: 10
+            timeoutSeconds: 2
+            failureThreshold: 3
+
+          # Tune the following to your service
+          resources:
+            requests:
+              cpu: 20m
+              memory: 32Mi
+            limits:
+              memory: 128Mi
+
+          securityContext:
+            # Do not allow service to gain privileges
+            allowPrivilegeEscalation: false
+            # Do not allow to run privileged
+            privileged: false
+            # Keep root file system read-only
+            readOnlyRootFilesystem: true
+            # Drop all capabilities
+            # Add back selectively if needed
+            capabilities:
+              drop:
+                - ALL
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: demo-service
+  namespace: demo-service
+spec:
+  selector:
+    app.kubernetes.io/name: demo-service
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+      protocol: TCP
