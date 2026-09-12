@@ -34,4 +34,19 @@ spec:
           - group: ""
             kind: Secret
             name: hubble-tls
-
+    - name: demo-service
+      hostname: demo.tc.jku.internal
+      port: 443
+      protocol: HTTPS
+      allowedRoutes:
+        namespaces:
+          from: Selector
+          selector:
+            matchLabels:
+              internal-web-gateway-access: "true"
+      tls:
+        mode: Terminate
+        certificateRefs:
+          - group: ""
+            kind: Secret
+            name: demo-service-tls
