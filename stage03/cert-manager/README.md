@@ -71,13 +71,6 @@ machine unless a step explicitly says to use the deployment machine.
 cert-manager `v1.21.1` is pinned because the Stage 02 example targets Kubernetes
 `v1.36.3`, which is within cert-manager 1.21's supported Kubernetes range.
 
-On the deployment machine, change to this stage's directory before running the
-cluster commands:
-
-```bash
-cd stage03/cert-manager
-```
-
 ## 1. Create the offline root CA
 
 Copy `pki/root-ca.cnf` and `pki/intermediate-ca.cnf` to an encrypted or otherwise
@@ -92,6 +85,7 @@ umask 077
 mkdir -p tc-jku-pki
 cd tc-jku-pki
 
+# Generate private key, use elliptic curves
 openssl genpkey \
   -algorithm EC \
   -pkeyopt ec_paramgen_curve:P-384 \
@@ -99,6 +93,7 @@ openssl genpkey \
   -aes-256-cbc \
   -out root-ca.key
 
+# Generate root CA request and sign it
 openssl req \
   -new \
   -x509 \
@@ -131,6 +126,7 @@ Still on the offline machine, create an encrypted ECDSA P-384 intermediate key
 and CSR:
 
 ```bash
+# Generate private key, use elliptic curves
 openssl genpkey \
   -algorithm EC \
   -pkeyopt ec_paramgen_curve:P-384 \
@@ -138,6 +134,7 @@ openssl genpkey \
   -aes-256-cbc \
   -out intermediate-ca.key
 
+# Generate intermediate CA request
 openssl req \
   -new \
   -sha384 \
@@ -179,6 +176,7 @@ openssl pkey \
   -in intermediate-ca.key \
   -out intermediate-ca-deploy.key
 
+# Create chain including intermediate and root CA public keys
 cat intermediate-ca.crt root-ca.crt > intermediate-chain.crt
 ```
 
@@ -191,6 +189,10 @@ Securely transfer only these files to the deployment machine:
 Verify the root fingerprint after transfer. Never transfer `root-ca.key`.
 
 ## 3. Install cert-manager
+
+```bash
+cd stage03
+```
 
 From this directory, install the pinned chart and wait for it to become ready:
 
@@ -219,8 +221,8 @@ Create the signing Secret in cert-manager's default cluster-resource namespace:
 
 ```bash
 kubectl -n cert-manager create secret tls tc-jku-internal-intermediate-ca \
-  --cert=intermediate-chain.crt \
-  --key=intermediate-ca-deploy.key
+  --cert=cert-manager/pki/intermediate-chain.crt \
+  --key=cert-manager/pki/intermediate-ca-deploy.key
 ```
 
 Confirm that the Secret exists without printing its contents:
