@@ -4,7 +4,7 @@ metadata:
   name: internal-web
   namespace: observability
   annotations:
-    cert-manager.io/cluster-issuer: tc-jku-internal-ca
+    cert-manager.io/cluster-issuer: tc-jku-web-ca
     cert-manager.io/duration: 2160h
     cert-manager.io/renew-before: 720h
     cert-manager.io/private-key-algorithm: ECDSA

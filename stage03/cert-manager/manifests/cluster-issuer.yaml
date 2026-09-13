@@ -1,9 +1,19 @@
 apiVersion: cert-manager.io/v1
 kind: ClusterIssuer
 metadata:
-  name: tc-jku-internal-ca
+  name: tc-jku-web-ca
 spec:
   ca:
     # ClusterIssuer signing Secrets are read from cert-manager's cluster
     # resource namespace, which is "cert-manager" by default.
-    secretName: tc-jku-internal-intermediate-ca
+    secretName: tc-jku-web-intermediate-ca
+---
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: tc-jku-cluster-ca
+spec:
+  ca:
+    # ClusterIssuer signing Secrets are read from cert-manager's cluster
+    # resource namespace, which is "cert-manager" by default.
+    secretName: tc-jku-cluster-intermediate-ca
