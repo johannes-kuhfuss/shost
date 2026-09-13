@@ -46,24 +46,30 @@ spec:
               value: "0.0.0.0"
             - name: SERVER_PORT
               value: "8080"
+            - name: SERVER_TLS_PORT
+              value: "8443"
             - name: USE_TLS
-              value: "false"
+              value: "true"
             - name: GIN_MODE
               value: "release"
+            - name: CERT_FILE
+              value: /var/run/demo-service/tls/tls.crt
+            - name: KEY_FILE
+              value: /var/run/demo-service/tls/tls.key
 
           # Expose ports
           ports:
-            - name: http
-              containerPort: 8080
+            - name: https
+              containerPort: 8443
               protocol: TCP
 
           # Define startup probe (Has the app finished starting?)
           # Customarily exposed at /startupz
-          # Default to healthz endpoint for now
           startupProbe:
             httpGet:
-              path: /healthz
-              port: http
+              path: /startupz
+              port: https
+              scheme: HTTPS
             # Tune the following to your service
             periodSeconds: 5
             timeoutSeconds: 2
@@ -74,19 +80,20 @@ spec:
           readinessProbe:
             httpGet:
               path: /healthz
-              port: http
+              port: https
+              scheme: HTTPS
             # Tune the following to your service
             periodSeconds: 5
             timeoutSeconds: 2
             failureThreshold: 2
 
           # Define liveness probe (is the app live / not stuck?)
-          # Usually exposed at /livez
-          # Default to healthz endpoint for now
+          # Customarily exposed at /livez
           livenessProbe:
             httpGet:
-              path: /healthz
-              port: http
+              path: /livez
+              port: https
+              scheme: HTTPS
             # Tune the following to your service
             periodSeconds: 10
             timeoutSeconds: 2
@@ -112,6 +119,16 @@ spec:
             capabilities:
               drop:
                 - ALL
+          # Mount volume with certificate
+          volumeMounts:
+            - name: backend-tls
+              mountPath: /var/run/demo-service/tls
+              readOnly: true
+      # Volume for the certificate
+      volumes:
+        - name: backend-tls
+          secret:
+            secretName: demo-service-backend-tls
 ---
 apiVersion: v1
 kind: Service
@@ -122,7 +139,7 @@ spec:
   selector:
     app.kubernetes.io/name: demo-service
   ports:
-    - name: http
-      port: 80
-      targetPort: http
+    - name: https
+      port: 443
+      targetPort: https
       protocol: TCP

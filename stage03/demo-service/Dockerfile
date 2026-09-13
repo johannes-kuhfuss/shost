@@ -24,6 +24,8 @@ COPY --from=build /out/demo-service /demo-service
 
 USER 65532:65532
 
+# Pick the correct port, depending on whether or not you use TLS
 EXPOSE 8080
+#EXPOSE 8443
 
 ENTRYPOINT ["/demo-service"]

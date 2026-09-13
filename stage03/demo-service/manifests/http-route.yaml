@@ -23,4 +23,4 @@ spec:
         - group: ""
           kind: Service
           name: demo-service
-          port: 80
+          port: 443

@@ -4,6 +4,7 @@ import (
 	"crypto/tls"
 	"demo-service/appconfig"
 	"demo-service/appstate"
+	"demo-service/certstore"
 	"fmt"
 	"net/http"
 	"time"
@@ -14,9 +15,10 @@ import (
 )
 
 type Application struct {
-	cfg    appconfig.AppConfig
-	state  *appstate.AppState
-	server http.Server
+	cfg              appconfig.AppConfig
+	state            *appstate.AppState
+	server           http.Server
+	certificateStore *certstore.CertificateStore
 }
 
 func StartApp() error {
@@ -31,6 +33,12 @@ func (a *Application) Start() error {
 		return err
 	}
 	logger.Info("Starting application...")
+	if a.cfg.Server.UseTLS {
+		a.certificateStore = certstore.New(a.cfg.Server.CertFile, a.cfg.Server.KeyFile)
+		if err := a.certificateStore.Reload(); err != nil {
+			return fmt.Errorf("initial TLS certificate load failed: %w", err)
+		}
+	}
 	a.initRouter()
 	a.initServer()
 	a.wireApp()
@@ -71,6 +79,7 @@ func (a *Application) initServer() {
 				tls.CurveP256,
 				tls.CurveP384,
 			},
+			GetCertificate: a.certificateStore.GetCertificate,
 		}
 	}
 	if a.cfg.Server.UseTLS {
@@ -101,7 +110,10 @@ func (a *Application) wireApp() {
 // mapUrls defines the handlers for the available URLs
 func (a *Application) mapUrls() error {
 	a.state.Runtime.Router.GET("/", a.pong)
+	a.state.Runtime.Router.GET("/startupz", a.startupz)
 	a.state.Runtime.Router.GET("/healthz", a.healthz)
+	a.state.Runtime.Router.GET("/livez", a.livez)
+	a.state.Runtime.Router.GET("/certificate", a.certificate)
 	return nil
 }
 
@@ -109,8 +121,34 @@ func (a *Application) pong(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"ping": "pong"})
 }
 
+func (a *Application) startupz(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{
+		"endpoint": "startupz",
+		"status":   "ok"})
+}
+
 func (a *Application) healthz(c *gin.Context) {
-	c.JSON(http.StatusOK, gin.H{"status": "ok"})
+	c.JSON(http.StatusOK, gin.H{
+		"endpoint": "healthz",
+		"status":   "ok"})
+}
+
+func (a *Application) livez(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{
+		"endpoint": "livez",
+		"status":   "ok"})
+}
+
+func (a *Application) certificate(c *gin.Context) {
+	info := a.certificateStore.Info()
+	if info == nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{
+			"error": "no certificate loaded",
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, info)
 }
 
 // startServer starts the preconfigured web server
@@ -118,7 +156,7 @@ func (a *Application) startServer() {
 	logger.Infof("Listening on %v", a.state.Runtime.ListenAddr)
 	a.state.Runtime.StartDate = date.GetNowUtc()
 	if a.cfg.Server.UseTLS {
-		if err := a.server.ListenAndServeTLS(a.cfg.Server.CertFile, a.cfg.Server.KeyFile); err != nil && err != http.ErrServerClosed {
+		if err := a.server.ListenAndServeTLS("", ""); err != nil && err != http.ErrServerClosed {
 			logger.Error("Error while starting https server", err)
 		}
 	} else {

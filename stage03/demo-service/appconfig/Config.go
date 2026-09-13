@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/johannes-kuhfuss/services_utils/logger"
 	"github.com/joho/godotenv"
 	"github.com/kelseyhightower/envconfig"
 )
@@ -16,9 +17,9 @@ type AppConfig struct {
 		Port                 string `envconfig:"SERVER_PORT" default:"8080"`
 		TLSPort              string `envconfig:"SERVER_TLS_PORT" default:"8443"`
 		GracefulShutdownTime int    `envconfig:"GRACEFUL_SHUTDOWN_TIME" default:"10"`
-		UseTLS               bool   `envconfig:"USE_TLS" default:"false"`
-		CertFile             string `envconfig:"CERT_FILE" default:"./cert/cert.pem"`
-		KeyFile              string `envconfig:"KEY_FILE" default:"./cert/cert.key"`
+		UseTLS               bool   `envconfig:"USE_TLS" default:"true"`
+		CertFile             string `envconfig:"CERT_FILE" default:"./test-cert/cert.pem"`
+		KeyFile              string `envconfig:"KEY_FILE" default:"./test-cert/key.pem"`
 	}
 	Gin struct {
 		Mode         string `envconfig:"GIN_MODE" default:"release"`
@@ -52,6 +53,8 @@ func validateConfig(config *AppConfig) error {
 	if config.Server.GracefulShutdownTime <= 0 {
 		return fmt.Errorf("graceful shutdown time must be greater than 0")
 	}
+	d, _ := os.Getwd()
+	logger.Infof("Current folder: %v", d)
 	if config.Server.UseTLS {
 		if _, err := os.Stat(config.Server.CertFile); err != nil {
 			return fmt.Errorf("TLS certificate file is not accessible: %w", err)
@@ -68,11 +71,8 @@ func checkFilePath(filePath *string) {
 	if *filePath != "" {
 		*filePath = filepath.Clean(*filePath)
 		_, err := os.Stat(*filePath)
-		if err == nil {
-			*filePath, err = filepath.EvalSymlinks(*filePath)
-			if err != nil {
-				log.Printf("error checking file %v", *filePath)
-			}
+		if err != nil {
+			log.Printf("error checking file %v: %v", *filePath, err)
 		}
 	}
 }

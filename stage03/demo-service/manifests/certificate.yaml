@@ -1,0 +1,30 @@
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: demo-service-backend
+  namespace: demo-service
+spec:
+  secretName: demo-service-backend-tls
+  # Deliberately short duration for testing with demo service
+  duration: 1h
+  # Renew 15 minutes before expiry
+  renewBefore: 15m
+
+  issuerRef:
+    group: cert-manager.io
+    kind: ClusterIssuer
+    name: tc-jku-cluster-ca
+
+  dnsNames:
+    - demo-service.demo-service.svc.cluster.local
+
+  privateKey:
+    algorithm: ECDSA
+    size: 256
+    encoding: PKCS8
+    # Always also create new private key for demo purposes
+    rotationPolicy: Always
+
+  usages:
+    - digital signature
+    - server auth
