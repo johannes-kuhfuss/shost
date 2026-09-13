@@ -1,0 +1,23 @@
+# trust-manager Helm values for the Stage 03 internal CA trust bundle.
+
+crds:
+  enabled: true
+  keep: true
+
+# This installation distributes only the explicitly configured private root.
+# Do not pull an unused operating-system CA package into the controller Pod.
+defaultPackage:
+  enabled: false
+
+# ConfigMaps are sufficient for public CA certificates and require less RBAC
+# than Secret targets.
+secretTargets:
+  enabled: false
+
+# Reject accidental non-CA material in configured Bundle sources.
+filterNonCACerts:
+  enabled: true
+
+app:
+  trust:
+    namespace: cert-manager

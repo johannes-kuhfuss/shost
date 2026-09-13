@@ -1,0 +1,25 @@
+apiVersion: trust.cert-manager.io/v1alpha1
+kind: Bundle
+metadata:
+  name: tc-jku-internal-ca
+spec:
+  sources:
+    # Sources are read from trust-manager's trust namespace, configured as
+    # "cert-manager" in values.yaml. Keep this independently managed root
+    # separate from cert-manager's rotating leaf and issuer Secrets.
+    - configMap:
+        name: tc-jku-internal-root-ca
+        key: ca.crt
+
+  target:
+    # A Bundle's name is also the name of every generated target ConfigMap.
+    configMap:
+      key: ca.crt
+      metadata:
+        labels:
+          app.kubernetes.io/component: trust-bundle
+          app.kubernetes.io/managed-by: trust-manager
+    # Trust is opt-in. Label a namespace to receive this ConfigMap.
+    namespaceSelector:
+      matchLabels:
+        trust.tc.jku.internal/internal-ca: "true"

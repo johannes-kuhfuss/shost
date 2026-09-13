@@ -1,4 +1,4 @@
-# Stage 03 - cert-manager and Hubble HTTPS
+# Stage 03 - cert-manager, trust-manager, and HTTPS
 
 This stage installs cert-manager with Helm and exposes the existing Hubble UI
 through a shared Cilium Gateway at:
@@ -11,9 +11,14 @@ TLS terminates at the Gateway. Traffic from the Gateway to the `hubble-ui`
 Service remains HTTP. Cilium's existing, independently managed Hubble mTLS is
 not changed.
 
+It also installs trust-manager to distribute the private root CA to opted-in
+namespaces. The demo service uses that trust bundle with a `BackendTLSPolicy`
+for TLS from the Gateway to the backend.
+
 ## Sources
 
 - <https://cert-manager.io/docs/>
+- <https://cert-manager.io/docs/trust/trust-manager/>
 - <https://nvlpubs.nist.gov/nistpubs/SpecialPublications/NIST.SP.800-57pt1r5.pdf>
 - <https://certification.enisa.europa.eu/document/download/a845662b-aee0-484e-9191-890c4cfa7aaa_en?filename=ECCG%20Agreed%20Cryptographic%20Mechanisms%20version%202.pdf>
 - <https://smallstep.com/blog/everything-pki/>
@@ -41,8 +46,9 @@ not changed.
 - Hubble remains owned by the Cilium Helm release in `kube-system`.
 - A narrowly scoped `ReferenceGrant` permits the HTTPRoute to reference only
   the `hubble-ui` Service across the namespace boundary.
-- Trust is installed manually on administrator devices. trust-manager is not
-  needed until cluster workloads need the private CA.
+- Trust is installed manually on administrator devices. trust-manager publishes
+  the private root as a ConfigMap only in explicitly labelled namespaces for
+  cluster workloads and Gateway backend validation.
 
 ## Prerequisites
 
@@ -65,7 +71,7 @@ kubectl get services --all-namespaces --output=wide | grep 192.168.200.221
 
 This command should produce no output. If the original dedicated Hubble Gateway
 is already installed, it will legitimately show the old Gateway Service; use
-the migration procedure in step 5 instead.
+the migration procedure in step 6 instead.
 
 The deployment machine needs `kubectl`, Helm, and OpenSSL. The examples below
 assume a Linux shell, as used by Stage 02. Run the CA commands on the offline
@@ -73,6 +79,7 @@ machine unless a step explicitly says to use the deployment machine.
 
 cert-manager `v1.21.1` is pinned because the Stage 02 example targets Kubernetes
 `v1.36.3`, which is within cert-manager 1.21's supported Kubernetes range.
+trust-manager `v0.24.0` is pinned and supports Kubernetes `v1.25.0` and newer.
 
 ## 1. Create the offline root CA
 
@@ -264,11 +271,13 @@ Securely transfer only these files to the deployment machine:
 
 Verify the root fingerprint after transfer. Never transfer `root-ca.key`.
 
-On the deployment machine, place the transferred intermediate chains and
-temporary unencrypted deployment keys in `stage03/cert-manager/pki/`. The
-directory's `.gitignore` excludes these artifacts, but verify `git status`
-before every commit and remove the unencrypted keys immediately after creating
-the Kubernetes Secrets.
+On the deployment machine, place the transferred root certificate, intermediate
+chains, and temporary unencrypted deployment keys in
+`stage03/cert-manager/pki/`. The directory's `.gitignore` excludes the chains
+and keys, but verify `git status` before every commit and remove the unencrypted
+keys immediately after creating the Kubernetes Secrets. The public root
+certificate remains on the deployment machine for trust distribution and
+administrator-device enrollment.
 
 ### Verify the name-constraint boundary
 
@@ -427,7 +436,55 @@ kubectl -n cert-manager get secret \
 Remove both temporary unencrypted deployment keys from the deployment machine
 after the Secrets are created. Retain the encrypted offline recovery copies.
 
-## 5. Create the issuers and shared Gateway
+Create a separately managed ConfigMap containing only the public root
+certificate. This is trust-manager's source of truth; do not use either signing
+Secret as a trust source:
+
+```bash
+kubectl -n cert-manager create configmap tc-jku-internal-root-ca \
+  --from-file=ca.crt=cert-manager/pki/root-ca.crt \
+  --dry-run=client \
+  --output=yaml \
+  | kubectl apply -f -
+
+kubectl -n cert-manager get configmap tc-jku-internal-root-ca
+```
+
+The root certificate is public material, but its integrity is security
+critical. Verify its recorded SHA-384 fingerprint before publishing it.
+
+## 5. Install trust-manager and publish the root bundle
+
+Install the pinned chart in the existing `cert-manager` namespace. The values
+disable the unused public CA package and Secret targets; trust-manager only
+needs to read the root source ConfigMap and write target ConfigMaps:
+
+```bash
+helm upgrade --install trust-manager \
+  oci://quay.io/jetstack/charts/trust-manager \
+  --version v0.24.0 \
+  --namespace cert-manager \
+  --values trust-manager/values.yaml \
+  --wait \
+  --timeout 5m
+
+kubectl -n cert-manager rollout status deployment/trust-manager --timeout=5m
+```
+
+Create the cluster-scoped Bundle:
+
+```bash
+kubectl apply -f trust-manager/manifests/internal-ca-bundle.yaml
+kubectl get bundle tc-jku-internal-ca
+```
+
+The Bundle must report `SYNCED=True`. It creates a ConfigMap named
+`tc-jku-internal-ca`, containing `ca.crt`, in every namespace labelled
+`trust.tc.jku.internal/internal-ca=true`. The selector is deliberately opt-in.
+Do not create or edit those target ConfigMaps manually; trust-manager owns
+them.
+
+## 6. Create the issuers and shared Gateway
 
 Apply the namespace and issuer first:
 
@@ -471,19 +528,30 @@ kubectl wait -n observability certificate/hubble-tls \
 kubectl wait -n observability certificate/hubble-tls \
   --for=condition=Ready \
   --timeout=2m
+kubectl wait -n observability certificate/demo-service-tls \
+  --for=create \
+  --timeout=2m
+kubectl wait -n observability certificate/demo-service-tls \
+  --for=condition=Ready \
+  --timeout=2m
 kubectl apply -f cert-manager/manifests/hubble/http-route.yaml
 ```
 
 The Gateway can exist briefly with `ResolvedRefs=False` while cert-manager
-creates `hubble-tls`. It should reconcile automatically when the Secret becomes
+creates its TLS Secrets. It should reconcile automatically when they become
 available.
 
-## 6. Configure DNS
+## 7. Configure DNS
 
-Create host (A) entry  with these values:
+Create host (A) entries with these values:
 
 ```text
 Host:   hubble
+Domain: tc.jku.internal
+Type:   A
+IP:     192.168.200.221
+
+Host:   demo
 Domain: tc.jku.internal
 Type:   A
 IP:     192.168.200.221
@@ -493,11 +561,12 @@ Apply the configuration and verify it from an administrator device:
 
 ```bash
 nslookup hubble.tc.jku.internal
+nslookup demo.tc.jku.internal
 ```
 
-The answer must be `192.168.200.221`.
+Both answers must be `192.168.200.221`.
 
-## 7. Install the root CA on administrator devices
+## 8. Install the root CA on administrator devices
 
 Verify the SHA-384 fingerprint before trusting `root-ca.crt`.
 
@@ -529,7 +598,7 @@ Some browsers, particularly Firefox depending on its configuration, may use a
 separate certificate store. Import `root-ca.crt` as a trusted certificate
 authority there if the operating-system trust store is not used.
 
-## 8. Verify Hubble HTTPS
+## 9. Verify Hubble HTTPS
 
 Check that Cilium assigned the requested address and accepted all references:
 
@@ -562,6 +631,58 @@ Open <https://hubble.tc.jku.internal> in a browser and inspect the certificate.
 Its DNS SAN must be `hubble.tc.jku.internal`, and its chain must lead to the
 verified TC JKU Internal Root CA.
 
+## 10. Deploy and verify the demo service with backend TLS
+
+The demo namespace in `demo-service/manifests/app.yaml` opts into both the
+shared Gateway and the trust bundle. Apply the workload resources in dependency
+order:
+
+```bash
+# Creates the Namespace, Deployment, and Service. The Pod may wait for its
+# certificate Secret until the following Certificate becomes Ready.
+kubectl apply -f demo-service/manifests/app.yaml
+kubectl apply -f demo-service/manifests/certificate.yaml
+kubectl wait -n demo-service certificate/demo-service-backend \
+  --for=condition=Ready \
+  --timeout=2m
+
+# trust-manager creates this after observing the namespace's opt-in label.
+kubectl wait -n demo-service configmap/tc-jku-internal-ca \
+  --for=create \
+  --timeout=2m
+
+kubectl apply -f demo-service/manifests/backend-tls-policy.yaml
+kubectl apply -f demo-service/manifests/http-route.yaml
+kubectl -n demo-service rollout status deployment/demo-service --timeout=5m
+```
+
+Check that the Certificate, trust bundle, backend TLS policy, and Route were
+accepted:
+
+```bash
+kubectl -n demo-service get \
+  certificate,secret,configmap,backendtlspolicy,httproute
+kubectl -n demo-service get configmap tc-jku-internal-ca \
+  --output="jsonpath={.data['ca\.crt']}" \
+  | openssl x509 -noout -subject -fingerprint -sha384
+kubectl -n demo-service describe backendtlspolicy demo-service
+kubectl -n demo-service describe httproute demo-service
+```
+
+The `BackendTLSPolicy` must report `Accepted=True`. The HTTPRoute must report
+`Accepted=True` and `ResolvedRefs=True`. The distributed root fingerprint must
+match the independently recorded value. Test the complete client-to-Gateway
+and Gateway-to-backend path:
+
+```bash
+curl --cacert cert-manager/pki/root-ca.crt \
+  --resolve demo.tc.jku.internal:443:192.168.200.221 \
+  https://demo.tc.jku.internal/certificate
+```
+
+The response describes the cluster-internal certificate served by the demo
+Pod, not the separate Gateway certificate presented to curl.
+
 ## Add another internal UI
 
 Each additional UI reuses `192.168.200.221` but receives its own hostname and
@@ -575,8 +696,8 @@ certificate:
    kubectl label namespace grafana internal-web-gateway-access=true
    ```
 
-3. Add an HTTPS listener to `manifests/gateway.yaml` with a unique listener
-   name, hostname, and Secret name. For example:
+3. Add an HTTPS listener to `cert-manager/manifests/gateway.yaml` with a unique
+   listener name, hostname, and Secret name. For example:
 
    ```yaml
    - name: grafana
@@ -601,7 +722,7 @@ certificate:
    `Secret/grafana-tls` in `observability` automatically:
 
    ```bash
-   kubectl apply -f manifests/gateway.yaml
+   kubectl apply -f cert-manager/manifests/gateway.yaml
    kubectl wait -n observability certificate/grafana-tls \
      --for=create \
      --timeout=2m
@@ -626,6 +747,11 @@ Keep the HTTPRoute and backend Service in the same namespace where possible.
 That avoids a cross-namespace backend reference and the corresponding
 `ReferenceGrant`. Hubble retains its grant because its Service is in
 `kube-system`.
+
+If the Gateway should use TLS to reach the new backend, also label its namespace
+with `trust.tc.jku.internal/internal-ca=true`, issue a cluster-internal
+certificate from `tc-jku-cluster-ca`, and attach a `BackendTLSPolicy` to the
+HTTPS Service port.
 
 ## Renewal and CA rotation
 
@@ -657,26 +783,57 @@ certificates. Maintain an inventory of Certificates by `issuerRef` so none are
 missed during an intermediate rotation.
 
 Root rotation requires an overlap period during which administrator devices
-trust both old and new roots. It should be planned separately well before the
-20-year root expires.
+and cluster workloads trust both old and new roots. Before issuing certificates
+under a new root, build a PEM file containing both roots and update the source
+ConfigMap with the same server-side-safe command used during installation:
+
+```bash
+kubectl -n cert-manager create configmap tc-jku-internal-root-ca \
+  --from-file=ca.crt=/secure/path/overlapping-root-bundle.crt \
+  --dry-run=client \
+  --output=yaml \
+  | kubectl apply -f -
+
+kubectl get bundle tc-jku-internal-ca
+kubectl -n demo-service get configmap tc-jku-internal-ca
+```
+
+Wait for trust-manager to publish the overlapping bundle everywhere before
+deploying intermediates signed by the new root. Remove the old root from the
+source only after every client has received the new trust anchor and every old
+leaf and intermediate has been retired. Root rotation should be planned well
+before the 20-year root expires.
 
 ## Removal
 
 Remove only the Stage 03 resources, leaving Cilium and Hubble themselves intact:
 
 ```bash
-kubectl delete -f manifests/hubble/http-route.yaml
-kubectl delete -f manifests/hubble/reference-grant.yaml
-kubectl delete -f manifests/gateway.yaml
+kubectl delete -f demo-service/manifests/http-route.yaml --ignore-not-found
+kubectl delete -f demo-service/manifests/backend-tls-policy.yaml --ignore-not-found
+kubectl delete -f demo-service/manifests/certificate.yaml --ignore-not-found
+kubectl delete -f demo-service/manifests/app.yaml --ignore-not-found
+
+kubectl delete -f cert-manager/manifests/hubble/http-route.yaml
+kubectl delete -f cert-manager/manifests/hubble/reference-grant.yaml
+kubectl delete -f cert-manager/manifests/gateway.yaml
 kubectl -n observability delete certificate hubble-tls --ignore-not-found
 kubectl -n observability delete secret hubble-tls --ignore-not-found
-kubectl delete -f manifests/cluster-issuer.yaml
+kubectl -n observability delete certificate demo-service-tls --ignore-not-found
+kubectl -n observability delete secret demo-service-tls --ignore-not-found
+
+kubectl delete -f trust-manager/manifests/internal-ca-bundle.yaml
+kubectl -n cert-manager delete configmap tc-jku-internal-root-ca
+helm uninstall trust-manager --namespace cert-manager
+
+kubectl delete -f cert-manager/manifests/cluster-issuer.yaml
 kubectl -n cert-manager delete secret tc-jku-web-intermediate-ca
 kubectl -n cert-manager delete secret tc-jku-cluster-intermediate-ca
-kubectl delete -f manifests/namespace.yaml
+kubectl delete -f cert-manager/manifests/namespace.yaml
 helm uninstall cert-manager --namespace cert-manager
 ```
 
-Helm does not normally remove installed CRDs. Keep them if cert-manager will be
-reinstalled. Removing the CRDs also removes all corresponding custom resources
-and is intentionally outside this cleanup procedure.
+The cert-manager and trust-manager charts retain their installed CRDs. Keep them
+if either component will be reinstalled. Removing the CRDs also removes all
+corresponding custom resources and is intentionally outside this cleanup
+procedure.

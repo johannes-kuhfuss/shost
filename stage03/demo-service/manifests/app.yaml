@@ -4,6 +4,7 @@ metadata:
   name: demo-service
   labels:
     internal-web-gateway-access: "true"
+    trust.tc.jku.internal/internal-ca: "true"
     # Uncomment next line to actually reject pod if insecure
     #pod-security.kubernetes.io/enforce: restricted
     pod-security.kubernetes.io/warn: restricted
