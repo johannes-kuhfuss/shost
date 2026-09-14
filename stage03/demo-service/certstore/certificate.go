@@ -68,7 +68,7 @@ func buildCertificateInfo(leaf *x509.Certificate) CertificateInfo {
 	)
 	ci.Subject = leaf.Subject.CommonName
 	ci.Issuer = leaf.Issuer.CommonName
-	ci.SerialNumber = leaf.Issuer.SerialNumber
+	ci.SerialNumber = leaf.SerialNumber.String()
 	ci.DNSNames = leaf.DNSNames
 	ci.NotBefore = leaf.NotBefore
 	ci.NotAfter = leaf.NotAfter
