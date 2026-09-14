@@ -1,12 +1,15 @@
 package app
 
 import (
+	"context"
 	"crypto/tls"
 	"demo-service/appconfig"
 	"demo-service/appstate"
 	"demo-service/certstore"
+	"errors"
 	"fmt"
 	"net/http"
+	"sync/atomic"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -19,14 +22,15 @@ type Application struct {
 	state            *appstate.AppState
 	server           http.Server
 	certificateStore *certstore.CertificateStore
+	shuttingDown     atomic.Bool
 }
 
-func StartApp() error {
+func StartApp(ctx context.Context) error {
 	application := &Application{}
-	return application.Start()
+	return application.Start(ctx)
 }
 
-func (a *Application) Start() error {
+func (a *Application) Start(ctx context.Context) error {
 	a.state = appstate.New()
 	err := appconfig.InitConfig(appconfig.EnvFile, &a.cfg)
 	if err != nil {
@@ -45,9 +49,38 @@ func (a *Application) Start() error {
 	if err := a.mapUrls(); err != nil {
 		return err
 	}
-	a.startServer()
-	logger.Info("Ending application.")
-	return nil
+
+	serveErr := make(chan error, 1)
+	go func() {
+		serveErr <- a.startServer()
+	}()
+
+	select {
+	case err := <-serveErr:
+		return err
+	case <-ctx.Done():
+		a.shuttingDown.Store(true)
+		logger.Info("Shutdown requested. Shutting down...")
+	}
+
+	timeout := time.Duration(a.cfg.Server.GracefulShutdownTime) * time.Second
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+
+	shutdownErr := a.server.Shutdown(shutdownCtx)
+	if shutdownErr != nil {
+		logger.Error("Graceful server shutdown failed.", shutdownErr)
+		if closeErr := a.server.Close(); closeErr != nil {
+			logger.Error("Forced server shutdown failed", closeErr)
+		}
+	}
+
+	serveResult := <-serveErr
+	if shutdownErr != nil {
+		return fmt.Errorf("graceful shutdown: %w", shutdownErr)
+	}
+
+	return serveResult
 }
 
 // initRouter initializes gin-gonic as the router
@@ -110,9 +143,9 @@ func (a *Application) wireApp() {
 // mapUrls defines the handlers for the available URLs
 func (a *Application) mapUrls() error {
 	a.state.Runtime.Router.GET("/", a.pong)
-	a.state.Runtime.Router.GET("/startupz", a.startupz)
-	a.state.Runtime.Router.GET("/healthz", a.healthz)
-	a.state.Runtime.Router.GET("/livez", a.livez)
+	a.state.Runtime.Router.GET("/health/startup", a.startup)
+	a.state.Runtime.Router.GET("/health/ready", a.ready)
+	a.state.Runtime.Router.GET("/health/live", a.live)
 	a.state.Runtime.Router.GET("/certificate", a.certificate)
 	return nil
 }
@@ -121,21 +154,27 @@ func (a *Application) pong(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"ping": "pong"})
 }
 
-func (a *Application) startupz(c *gin.Context) {
+func (a *Application) startup(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
-		"endpoint": "startupz",
+		"endpoint": "startup probe",
 		"status":   "ok"})
 }
 
-func (a *Application) healthz(c *gin.Context) {
-	c.JSON(http.StatusOK, gin.H{
-		"endpoint": "healthz",
-		"status":   "ok"})
+func (a *Application) ready(c *gin.Context) {
+	if !a.shuttingDown.Load() {
+		c.JSON(http.StatusOK, gin.H{
+			"endpoint": "ready probe",
+			"status":   "ok"})
+	} else {
+		c.JSON(http.StatusServiceUnavailable, gin.H{
+			"endpoint": "ready probe",
+			"status":   "shutting down"})
+	}
 }
 
-func (a *Application) livez(c *gin.Context) {
+func (a *Application) live(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
-		"endpoint": "livez",
+		"endpoint": "live probe",
 		"status":   "ok"})
 }
 
@@ -152,16 +191,19 @@ func (a *Application) certificate(c *gin.Context) {
 }
 
 // startServer starts the preconfigured web server
-func (a *Application) startServer() {
+func (a *Application) startServer() error {
+	var (
+		err error
+	)
 	logger.Infof("Listening on %v", a.state.Runtime.ListenAddr)
 	a.state.Runtime.StartDate = date.GetNowUtc()
 	if a.cfg.Server.UseTLS {
-		if err := a.server.ListenAndServeTLS("", ""); err != nil && err != http.ErrServerClosed {
-			logger.Error("Error while starting https server", err)
-		}
+		err = a.server.ListenAndServeTLS("", "")
 	} else {
-		if err := a.server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			logger.Error("Error while starting http server", err)
-		}
+		err = a.server.ListenAndServe()
 	}
+	if errors.Is(err, http.ErrServerClosed) {
+		return nil
+	}
+	return fmt.Errorf("serve HTTP: %w", err)
 }

@@ -26,6 +26,8 @@ spec:
       labels:
         app.kubernetes.io/name: demo-service
     spec:
+      # Allow for graceful shutdown
+      terminationGracePeriodSeconds: 30
       securityContext:
         # Comply with PSA Restricted 
         # Do not run as root
@@ -65,10 +67,9 @@ spec:
               protocol: TCP
 
           # Define startup probe (Has the app finished starting?)
-          # Customarily exposed at /startupz
           startupProbe:
             httpGet:
-              path: /startupz
+              path: /health/startup
               port: https
               scheme: HTTPS
             # Tune the following to your service
@@ -77,10 +78,9 @@ spec:
             failureThreshold: 30
 
           # Define readiness probe (can this service receive traffic?)
-          # Customarily exposed at /healthz
           readinessProbe:
             httpGet:
-              path: /healthz
+              path: /health/ready
               port: https
               scheme: HTTPS
             # Tune the following to your service
@@ -89,10 +89,9 @@ spec:
             failureThreshold: 2
 
           # Define liveness probe (is the app live / not stuck?)
-          # Customarily exposed at /livez
           livenessProbe:
             httpGet:
-              path: /livez
+              path: /health/live
               port: https
               scheme: HTTPS
             # Tune the following to your service
