@@ -59,7 +59,19 @@ func (a *Application) Start(ctx context.Context) error {
 	case err := <-serveErr:
 		return err
 	case <-ctx.Done():
+		logger.Info("Draining traffic...")
 		a.shuttingDown.Store(true)
+		drainTimer := time.NewTimer(time.Duration(a.cfg.Server.DrainRequestsTime) * time.Second)
+		defer drainTimer.Stop()
+
+		select {
+		case <-drainTimer.C:
+			logger.Info("Request draining period completed.")
+
+		case err := <-serveErr:
+			// The server failed while we were draining.
+			return err
+		}
 		logger.Info("Shutdown requested. Shutting down...")
 	}
 

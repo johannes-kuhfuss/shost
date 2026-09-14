@@ -17,6 +17,7 @@ type AppConfig struct {
 		Port                 string `envconfig:"SERVER_PORT" default:"8080"`
 		TLSPort              string `envconfig:"SERVER_TLS_PORT" default:"8443"`
 		GracefulShutdownTime int    `envconfig:"GRACEFUL_SHUTDOWN_TIME" default:"10"`
+		DrainRequestsTime    int    `envconfig:"DRAIN_REQUESTS_TIME" default:"12"`
 		UseTLS               bool   `envconfig:"USE_TLS" default:"true"`
 		CertFile             string `envconfig:"CERT_FILE" default:"./test-cert/cert.pem"`
 		KeyFile              string `envconfig:"KEY_FILE" default:"./test-cert/key.pem"`
