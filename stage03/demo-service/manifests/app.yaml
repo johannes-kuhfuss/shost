@@ -41,7 +41,7 @@ spec:
       containers:
         - name: demo-service
           image: docker.io/johanneskuhfuss/demo-service:latest
-          imagePullPolicy: IfNotPresent
+          imagePullPolicy: Always
 
           # Specify environement variables
           env:
