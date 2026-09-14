@@ -633,6 +633,8 @@ verified TC JKU Internal Root CA.
 
 ## 10. Deploy and verify the demo service with backend TLS
 
+Before you deploy, make sure the latest version of the demo-service is built and available in a suitable Docker registry. Then adjust the image location in `demo-service/manifests/app.yaml`.
+
 The demo namespace in `demo-service/manifests/app.yaml` opts into both the
 shared Gateway and the trust bundle. Apply the workload resources in dependency
 order:
