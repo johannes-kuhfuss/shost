@@ -6,7 +6,6 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/johannes-kuhfuss/services_utils/logger"
 	"github.com/joho/godotenv"
 	"github.com/kelseyhightower/envconfig"
 )
@@ -54,8 +53,6 @@ func validateConfig(config *AppConfig) error {
 	if config.Server.GracefulShutdownTime <= 0 {
 		return fmt.Errorf("graceful shutdown time must be greater than 0")
 	}
-	d, _ := os.Getwd()
-	logger.Infof("Current folder: %v", d)
 	if config.Server.UseTLS {
 		if _, err := os.Stat(config.Server.CertFile); err != nil {
 			return fmt.Errorf("TLS certificate file is not accessible: %w", err)
