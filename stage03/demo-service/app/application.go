@@ -50,18 +50,27 @@ func (a *Application) Start(ctx context.Context) error {
 		return err
 	}
 
+	return a.runServer(
+		ctx,
+		a.startServer,
+		time.Duration(a.cfg.Server.DrainRequestsTime)*time.Second,
+		time.Duration(a.cfg.Server.GracefulShutdownTime)*time.Second,
+	)
+}
+
+func (a *Application) runServer(ctx context.Context, serve func() error, drainDuration, shutdownTimeout time.Duration) error {
 	serveErr := make(chan error, 1)
 	go func() {
-		serveErr <- a.startServer()
+		serveErr <- serve()
 	}()
 
 	select {
 	case err := <-serveErr:
 		return err
 	case <-ctx.Done():
-		logger.Infof("Allowing to drain traffic for %v seconds...", a.cfg.Server.DrainRequestsTime)
+		logger.Infof("Allowing traffic to drain for %v...", drainDuration)
 		a.shuttingDown.Store(true)
-		drainTimer := time.NewTimer(time.Duration(a.cfg.Server.DrainRequestsTime) * time.Second)
+		drainTimer := time.NewTimer(drainDuration)
 		defer drainTimer.Stop()
 
 		select {
@@ -75,8 +84,7 @@ func (a *Application) Start(ctx context.Context) error {
 		logger.Info("Shutdown requested. Shutting down...")
 	}
 
-	timeout := time.Duration(a.cfg.Server.GracefulShutdownTime) * time.Second
-	shutdownCtx, cancel := context.WithTimeout(context.Background(), timeout)
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
 	defer cancel()
 
 	shutdownErr := a.server.Shutdown(shutdownCtx)
