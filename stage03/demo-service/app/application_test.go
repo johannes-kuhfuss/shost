@@ -61,7 +61,7 @@ func TestRunServerDrainsTrafficAndCompletesActiveRequest(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	result := make(chan error, 1)
 	go func() {
-		result <- application.runServer(ctx, serve, 500*time.Millisecond, time.Second)
+		result <- application.runServer(ctx, serve, nil, 500*time.Millisecond, time.Second)
 	}()
 
 	requestResult := make(chan httpResult, 1)
@@ -124,7 +124,7 @@ func TestRunServerReturnsFailureDuringDrain(t *testing.T) {
 			close(serveStarted)
 			<-failServe
 			return wantErr
-		}, time.Hour, time.Second)
+		}, nil, time.Hour, time.Second)
 	}()
 
 	waitForSignal(t, serveStarted, "serve function to start")
@@ -155,7 +155,7 @@ func TestRunServerForcesCloseAfterShutdownTimeout(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	result := make(chan error, 1)
 	go func() {
-		result <- application.runServer(ctx, serve, 0, 100*time.Millisecond)
+		result <- application.runServer(ctx, serve, nil, 0, 100*time.Millisecond)
 	}()
 
 	requestDone := make(chan struct{})
@@ -175,6 +175,31 @@ func TestRunServerForcesCloseAfterShutdownTimeout(t *testing.T) {
 		t.Fatalf("runServer() error = %v, want context deadline exceeded", err)
 	}
 	waitForSignal(t, requestDone, "client request to be disconnected")
+}
+
+func TestRunServerShutsDownOnWatcherFailure(t *testing.T) {
+	application := &Application{}
+	application.server.Handler = http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})
+
+	_, serve := startTestServer(t, application)
+	wantErr := errors.New("watcher failed")
+	watchErr := make(chan error, 1)
+	result := make(chan error, 1)
+
+	go func() {
+		result <- application.runServer(context.Background(), serve, watchErr, 0, time.Second)
+	}()
+	watchErr <- wantErr
+
+	err := waitForResult(t, result)
+	if !errors.Is(err, wantErr) {
+		t.Fatalf("runServer() error = %v, want %v", err, wantErr)
+	}
+	if !application.shuttingDown.Load() {
+		t.Fatal("application did not enter shutdown state after watcher failure")
+	}
 }
 
 type httpResult struct {

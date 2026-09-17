@@ -50,39 +50,72 @@ func (a *Application) Start(ctx context.Context) error {
 		return err
 	}
 
-	return a.runServer(
-		ctx,
+	appCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	var (
+		watchDone <-chan struct{}
+		watchErr  <-chan error
+	)
+	if a.cfg.Server.UseTLS {
+		watcherDone := make(chan struct{})
+		watcherErrors := make(chan error, 1)
+		watchDone = watcherDone
+		watchErr = watcherErrors
+
+		go func() {
+			defer close(watcherDone)
+			if err := a.certificateStore.WatchCertFolder(appCtx); err != nil {
+				watcherErrors <- err
+			}
+		}()
+	}
+
+	serverErr := a.runServer(
+		appCtx,
 		a.startServer,
+		watchErr,
 		time.Duration(a.cfg.Server.DrainRequestsTime)*time.Second,
 		time.Duration(a.cfg.Server.GracefulShutdownTime)*time.Second,
 	)
+
+	cancel()
+	if watchDone != nil {
+		<-watchDone
+	}
+	return serverErr
 }
 
-func (a *Application) runServer(ctx context.Context, serve func() error, drainDuration, shutdownTimeout time.Duration) error {
+func (a *Application) runServer(ctx context.Context, serve func() error, watchErr <-chan error, drainDuration, shutdownTimeout time.Duration) error {
 	serveErr := make(chan error, 1)
 	go func() {
 		serveErr <- serve()
 	}()
 
+	var lifecycleErr error
 	select {
 	case err := <-serveErr:
 		return err
+	case err := <-watchErr:
+		lifecycleErr = fmt.Errorf("certificate watcher failed: %w", err)
+		logger.Error("Certificate watcher failed. Shutting down.", err)
 	case <-ctx.Done():
-		logger.Infof("Allowing traffic to drain for %v...", drainDuration)
-		a.shuttingDown.Store(true)
-		drainTimer := time.NewTimer(drainDuration)
-		defer drainTimer.Stop()
-
-		select {
-		case <-drainTimer.C:
-			logger.Info("Request draining period completed.")
-
-		case err := <-serveErr:
-			// The server failed while we were draining.
-			return err
-		}
-		logger.Info("Shutdown requested. Shutting down...")
 	}
+
+	logger.Infof("Allowing traffic to drain for %v...", drainDuration)
+	a.shuttingDown.Store(true)
+	drainTimer := time.NewTimer(drainDuration)
+	defer drainTimer.Stop()
+
+	select {
+	case <-drainTimer.C:
+		logger.Info("Request draining period completed.")
+
+	case err := <-serveErr:
+		// The server failed while we were draining.
+		return err
+	}
+	logger.Info("Shutdown requested. Shutting down...")
 
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
 	defer cancel()
@@ -99,8 +132,10 @@ func (a *Application) runServer(ctx context.Context, serve func() error, drainDu
 	if shutdownErr != nil {
 		return fmt.Errorf("graceful shutdown: %w", shutdownErr)
 	}
-
-	return serveResult
+	if serveResult != nil {
+		return serveResult
+	}
+	return lifecycleErr
 }
 
 // initRouter initializes gin-gonic as the router
