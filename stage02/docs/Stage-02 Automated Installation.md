@@ -360,6 +360,76 @@ Repeat this block when rotating the token. The Helm values reference the Secret
 through `imagePullSecrets`; workstation authentication alone does not give the
 cluster access. Recreate the Secret if the namespace is deleted and reinstalled.
 
+#### Reuse the DHI credential across namespaces
+
+Kubernetes image-pull Secrets are namespace-scoped. Reuse the same read-only
+credential by copying `dhi-pull-secret` from `local-path-storage` into each
+namespace that will run DHI workloads. Pods must reference the copy in their
+own namespace; there is no cluster-wide image-pull Secret. See the
+[Kubernetes private-registry documentation](https://kubernetes.io/docs/tasks/configure-pod-container/pull-image-private-registry/).
+
+The following Bash block requires `jq`. Run it when preparing to migrate
+workloads in `cert-manager` and `kube-system`. Both namespaces must already
+exist; on a fresh Stage 02 installation, defer the `cert-manager` copy until
+Stage 03 has created that namespace. Adjust the target list to the namespaces
+you are migrating. Do not enable shell tracing (`set -x`).
+
+```bash
+(
+  set -euo pipefail
+  dhi_namespaces=(cert-manager kube-system)
+
+  # Check every target before changing any Secrets.
+  for namespace in "${dhi_namespaces[@]}"; do
+    kubectl get namespace "$namespace" >/dev/null
+  done
+
+  for namespace in "${dhi_namespaces[@]}"; do
+    kubectl --namespace local-path-storage get secret dhi-pull-secret -o json |
+      jq --arg namespace "$namespace" '{
+        apiVersion: "v1",
+        kind: "Secret",
+        metadata: {
+          name: "dhi-pull-secret",
+          namespace: $namespace
+        },
+        type: .type,
+        data: .data
+      }' |
+      kubectl apply -f -
+  done
+
+  for namespace in local-path-storage "${dhi_namespaces[@]}"; do
+    kubectl --namespace "$namespace" get secret dhi-pull-secret
+  done
+)
+```
+
+This creates or updates the destination Secrets without copying source object
+identity or ownership metadata, writing credentials to disk, or printing their
+contents. The final commands confirm that the Secrets exist; they do not test
+registry authentication.
+
+Each workload still needs an explicit reference to its namespace's Secret.
+Local Path Provisioner's Helm values already contain:
+
+```yaml
+imagePullSecrets:
+  - name: dhi-pull-secret
+```
+
+Use each chart's documented setting when migrating other workloads; the values
+key may differ. Copying the Secret alone does not switch images or attach it
+to Pods. These instructions do not change the other charts' image configuration.
+
+For token rotation, rerun the creation block above with the new credential,
+then rerun the copy block for every namespace using it. Verify new image pulls
+with the updated credential before revoking the old token. The Secrets are
+independent copies: updates are not automatically synchronized, and newly
+created or recreated namespaces need a copy before deploying DHI workloads.
+
+#### Apply and verify Local Path Provisioner
+
 Review and apply the complete root. On an existing installation, expect an
 update to the Helm release, with no storage migration:
 
