@@ -25,11 +25,24 @@ loaded. It never returns private-key material.
 
 ## Build
 
+The builder uses `dhi.io/golang:1.27.1-debian13-dev`. Authenticate with your
+Docker Hub username (or organization name) and read-only access token before
+building. The development variant supplies the shell and build tools needed
+by the Dockerfile's `RUN` instructions.
+
 ```bash
+docker login dhi.io
 docker build -t johanneskuhfuss/demo-service .
 ```
 
 Adjust the tag to your account / linking.
+
+For GitHub Actions, configure repository secrets `DHI_USERNAME` and `DHI_TOKEN`
+with the same read-only registry access. The workflow logs in before building
+and logs out afterward. Fork pull requests and Dependabot pull requests run
+the Go and manifest checks but skip the authenticated image build and container
+smoke test; those checks run on ordinary same-repository pull requests and pushes.
+The Kubernetes pull Secret does not authenticate local or CI builds.
 
 The final image is a non-root `scratch` image. It contains only the service
 binary and listens on plain HTTP by default:

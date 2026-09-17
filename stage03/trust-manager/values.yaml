@@ -1,5 +1,12 @@
 # trust-manager Helm values for the Stage 03 internal CA trust bundle.
 
+image:
+  repository: dhi.io/trust-manager
+  tag: "0.24.0"
+
+imagePullSecrets:
+  - name: dhi-pull-secret
+
 crds:
   enabled: true
   keep: true

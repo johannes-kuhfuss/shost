@@ -1,14 +1,20 @@
-# cert-manager Helm values for the Stage 03 manual installation.
+# Docker Hardened cert-manager chart values for the Stage 03 installation.
 #
 # Gateway API integration makes each HTTPS listener's hostname and Secret
 # reference the source of truth for its Certificate. Use a unique Secret name
 # per listener so every internal UI receives an independent leaf certificate.
+
+# Preserve upstream resource names and selector labels when switching charts.
+nameOverride: cert-manager
+fullnameOverride: cert-manager
 
 # Install CRDs as part of Helm install
 crds:
   enabled: true
 
 global:
+  imagePullSecrets:
+    - name: dhi-pull-secret
   # When this flag is enabled, secrets will be automatically removed when the certificate resource is deleted.
   # Keep secrets, while they might still be served
   enableCertificateOwnerRef: false

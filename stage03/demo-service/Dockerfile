@@ -1,4 +1,5 @@
-FROM golang:1.27.1-alpine AS build
+# The dev variant supplies the shell needed by RUN instructions.
+FROM dhi.io/golang:1.27.1-debian13-dev AS build
 
 WORKDIR /src
 

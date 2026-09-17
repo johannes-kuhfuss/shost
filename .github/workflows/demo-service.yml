@@ -49,10 +49,23 @@ jobs:
           shutdown="$(awk '/name: GRACEFUL_SHUTDOWN_TIME/ { getline; gsub(/"/, "", $2); print $2 }' manifests/app.yaml)"
           test "$termination" -gt "$((drain + shutdown))"
 
+      - name: Authenticate to DHI
+        if: github.actor != 'dependabot[bot]' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+        env:
+          DHI_USERNAME: ${{ secrets.DHI_USERNAME }}
+          DHI_TOKEN: ${{ secrets.DHI_TOKEN }}
+        run: |
+          set -euo pipefail
+          : "${DHI_USERNAME:?Configure the DHI_USERNAME repository secret}"
+          : "${DHI_TOKEN:?Configure the DHI_TOKEN repository secret}"
+          printf '%s' "$DHI_TOKEN" | docker login dhi.io --username "$DHI_USERNAME" --password-stdin
+
       - name: Build container
+        if: github.actor != 'dependabot[bot]' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
         run: docker build -t demo-service:test .
 
       - name: Smoke-test hardened container
+        if: github.actor != 'dependabot[bot]' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
         shell: bash
         run: |
           set -euo pipefail
@@ -67,3 +80,7 @@ jobs:
             sleep 1
           done
           exit 1
+
+      - name: Log out of DHI
+        if: always() && github.actor != 'dependabot[bot]' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+        run: docker logout dhi.io

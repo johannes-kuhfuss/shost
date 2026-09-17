@@ -73,13 +73,15 @@ This command should produce no output. If the original dedicated Hubble Gateway
 is already installed, it will legitimately show the old Gateway Service; use
 the migration procedure in step 6 instead.
 
-The deployment machine needs `kubectl`, Helm, and OpenSSL. The examples below
+The deployment machine needs `kubectl`, Helm, `jq`, and OpenSSL. The examples below
 assume a Linux shell, as used by Stage 02. Run the CA commands on the offline
 machine unless a step explicitly says to use the deployment machine.
 
-cert-manager `v1.21.1` is pinned because the Stage 02 example targets Kubernetes
+Docker's cert-manager chart `1.21.1` (application `v1.21.1`) is pinned because
+the Stage 02 example targets Kubernetes
 `v1.36.3`, which is within cert-manager 1.21's supported Kubernetes range.
 trust-manager `v0.24.0` is pinned and supports Kubernetes `v1.25.0` and newer.
+It uses the upstream chart with `dhi.io/trust-manager:0.24.0`.
 
 ## 1. Create the offline root CA
 
@@ -389,12 +391,45 @@ Remove all `*-leaf.*` test artifacts after completing the checks.
 cd stage03
 ```
 
-From this directory, install the pinned chart and wait for it to become ready:
+Create the namespace before copying the DHI registry Secret. Both cert-manager
+and trust-manager use this namespace-local copy of the Stage 02 credential:
+
+```bash
+kubectl create namespace cert-manager --dry-run=client -o yaml | kubectl apply -f -
+(
+  set -euo pipefail
+  kubectl -n local-path-storage get secret dhi-pull-secret -o json |
+    jq '{apiVersion: "v1", kind: "Secret",
+         metadata: {name: "dhi-pull-secret", namespace: "cert-manager"},
+         type: .type, data: .data}' |
+    kubectl apply -f -
+)
+kubectl -n cert-manager get secret dhi-pull-secret
+```
+
+If the source Secret does not exist yet, follow the
+[Stage 02 DHI credential instructions](../../stage02/docs/Stage-02%20Automated%20Installation.md#local-path-provisioner-dhi-registry-access-and-installation).
+Repeat the copy after rotating the source credential; copies do not synchronize
+automatically. Run credential commands without shell tracing.
+
+Authenticate Helm to download the chart, using your Docker Hub username (or
+organization name) and a read-only access token at the password prompt:
+
+```bash
+helm registry login dhi.io
+```
+
+Helm login authenticates the deployment machine; `dhi-pull-secret` separately
+authenticates the cluster's image pulls. Install the pinned
+[Docker Hardened cert-manager chart](https://hub.docker.com/hardened-images/catalog/dhi/cert-manager-chart/guides),
+which bundles hardened controller, webhook, cainjector, startupapicheck, and
+ACME solver images:
 
 ```bash
 helm upgrade --install cert-manager \
-  oci://quay.io/jetstack/charts/cert-manager \
-  --version v1.21.1 \
+  oci://dhi.io/cert-manager-chart \
+  --version 1.21.1 \
+  --reset-values \
   --namespace cert-manager \
   --create-namespace \
   --values cert-manager/values.yaml \
@@ -409,6 +444,22 @@ kubectl -n cert-manager rollout status deployment/cert-manager-cainjector --time
 The chart owns the cert-manager CRDs. Gateway integration is enabled so
 cert-manager watches annotated Gateway listeners and creates their Certificate
 resources. Stage 02 installs the Gateway API CRDs before cert-manager starts.
+
+For an existing release, keep the release name and namespace above. The
+`--reset-values` option takes the hardened chart's defaults plus the supplied
+values file, avoiding retained upstream image overrides. Merge any additional
+site-specific settings into that file before upgrading. Do not uninstall the
+existing release or delete CRDs to switch charts.
+The values file preserves the upstream resource names and selector labels with
+`nameOverride` and `fullnameOverride`, since Docker's chart has a different name.
+
+Inspect the deployed images and verify certificate readiness after upgrading:
+
+```bash
+kubectl -n cert-manager get deployments \
+  -o custom-columns='NAME:.metadata.name,IMAGES:.spec.template.spec.containers[*].image'
+kubectl get certificates --all-namespaces
+```
 
 ## 4. Install the intermediate signing keys
 
@@ -455,7 +506,10 @@ critical. Verify its recorded SHA-384 fingerprint before publishing it.
 
 ## 5. Install trust-manager and publish the root bundle
 
-Install the pinned chart in the existing `cert-manager` namespace. The values
+Install the pinned upstream chart with the
+[Docker Hardened trust-manager image](https://hub.docker.com/hardened-images/catalog/dhi/trust-manager/guides)
+in the existing `cert-manager` namespace. The values reference the same
+`dhi-pull-secret` created in step 3 and explicitly pin the image to `0.24.0`. They
 disable the unused public CA package and Secret targets; trust-manager only
 needs to read the root source ConfigMap and write target ConfigMaps:
 
@@ -463,6 +517,7 @@ needs to read the root source ConfigMap and write target ConfigMaps:
 helm upgrade --install trust-manager \
   oci://quay.io/jetstack/charts/trust-manager \
   --version v0.24.0 \
+  --reset-values \
   --namespace cert-manager \
   --values trust-manager/values.yaml \
   --wait \
