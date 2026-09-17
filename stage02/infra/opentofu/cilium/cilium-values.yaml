@@ -7,6 +7,27 @@
 # - Cilium overlay routing uses VXLAN
 # - Gateway API CRDs are installed by the Talos root
 
+# Keep these DHI versions aligned with the pinned Cilium chart (1.20.1).
+# Full overrides bypass upstream digests and the operator's image-name suffix.
+imagePullSecrets:
+  - name: dhi-pull-secret
+
+image:
+  override: dhi.io/cilium:1.20.1-debian13
+
+operator:
+  image:
+    override: dhi.io/cilium-operator-generic:1.20.1-debian13
+
+envoy:
+  image:
+    # The chart executes /usr/bin/cilium-envoy-starter, supplied by compat.
+    override: dhi.io/cilium-envoy:1.20.1-debian13-compat
+
+certgen:
+  image:
+    override: dhi.io/cilium-certgen:0.4.9-debian13
+
 ipam:
   mode: kubernetes
 
@@ -70,9 +91,22 @@ hubble:
 
   relay:
     enabled: true
+    image:
+      override: dhi.io/hubble-relay:1.20.1-debian13
 
   ui:
     enabled: true
+    # Match ownership of nginx and backend files in the DHI images.
+    securityContext:
+      runAsUser: 65532
+      runAsGroup: 65532
+      fsGroup: 65532
+    frontend:
+      image:
+        override: dhi.io/hubble-ui:0.13.5-debian13
+    backend:
+      image:
+        override: dhi.io/hubble-ui-backend:0.13.5-debian13
 
   tls:
     enabled: true

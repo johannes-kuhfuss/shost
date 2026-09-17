@@ -287,31 +287,22 @@ tofu -chdir=talos plan
 tofu -chdir=talos apply
 ```
 
-Install Cilium:
+### DHI registry access before Cilium
 
-```bash
-tofu -chdir=cilium init
-tofu -chdir=cilium plan
-tofu -chdir=cilium apply
-```
-
-### Local Path Provisioner: DHI registry access and installation
-
-The upstream chart remains pinned to `0.0.37`. Its controller image is
-`dhi.io/local-path-provisioner:0.0.37`, the standard Docker Hardened Image
-runtime variant. The separate BusyBox helper remains at `1.37.0`.
-See the [DHI image guide](https://hub.docker.com/hardened-images/catalog/dhi/local-path-provisioner/guides)
-and [Docker's Kubernetes authentication instructions](https://docs.docker.com/dhi/how-to/use/#use-with-kubernetes).
+Cilium needs authenticated image pulls on its first startup. Create the source
+`dhi-pull-secret` in the existing `kube-system` namespace immediately after the
+Talos apply, before installing Cilium. This avoids depending on networking or
+local-path-provisioner to bootstrap registry access. See
+[Docker's Kubernetes authentication instructions](https://docs.docker.com/dhi/how-to/use/#use-with-kubernetes).
 
 Run the following Bash commands on the deployment machine from
 `stage02/infra/opentofu/`. Secret creation also requires `base64` and a Docker
 Hub personal access token with read access (or an organization access token
 with access to public repositories, using the organization name as username).
 
-Initialize the root and select the target cluster before creating the Secret:
+Select the target cluster before creating the Secret:
 
 ```bash
-tofu -chdir=local-path-provisioner init
 ../scripts/extract-talos-config.sh
 kubectl config current-context
 kubectl cluster-info
@@ -321,16 +312,7 @@ Verify that kubectl points at the cluster managed by this OpenTofu state. The
 extraction script preserves existing configuration files; use its `--overwrite`
 option if those files need replacing.
 
-On a **first installation only**, create the OpenTofu-managed namespace before
-creating the Secret. This targeted apply bootstraps the namespace; the full
-apply below still deploys the release. Skip this step on an existing installation:
-
-```bash
-tofu -chdir=local-path-provisioner apply \
-  -target=kubernetes_namespace_v1.local_path_storage
-```
-
-Create or update `dhi-pull-secret` in `local-path-storage`. This uses a temporary,
+Create or update `dhi-pull-secret` in `kube-system`. This uses a temporary,
 private Docker configuration so only the DHI credential is uploaded. The token
 is entered interactively, encoded into the temporary file, and kept out of Git and
 OpenTofu configuration/state. Do not run this block with shell tracing enabled.
@@ -349,7 +331,7 @@ OpenTofu configuration/state. Do not run this block with shell tracing enabled.
     > "$dhi_config_dir/config.json"
   unset dhi_token
   unset dhi_auth
-  kubectl --namespace local-path-storage create secret generic dhi-pull-secret \
+  kubectl --namespace kube-system create secret generic dhi-pull-secret \
     --type=kubernetes.io/dockerconfigjson \
     --from-file=.dockerconfigjson="$dhi_config_dir/config.json" \
     --dry-run=client -o yaml | kubectl apply -f -
@@ -360,24 +342,92 @@ Repeat this block when rotating the token. The Helm values reference the Secret
 through `imagePullSecrets`; workstation authentication alone does not give the
 cluster access. Recreate the Secret if the namespace is deleted and reinstalled.
 
+### Install Cilium with DHI images
+
+The upstream Cilium chart remains at `1.20.1`. The values override all images
+used by the enabled components, including init containers and certificate jobs:
+
+| Component | DHI image |
+| --- | --- |
+| Agent and init containers | `dhi.io/cilium:1.20.1-debian13` |
+| Generic operator | `dhi.io/cilium-operator-generic:1.20.1-debian13` |
+| Envoy | `dhi.io/cilium-envoy:1.20.1-debian13-compat` |
+| Hubble Relay | `dhi.io/hubble-relay:1.20.1-debian13` |
+| Hubble UI frontend | `dhi.io/hubble-ui:0.13.5-debian13` |
+| Hubble UI backend | `dhi.io/hubble-ui-backend:0.13.5-debian13` |
+| Certificate generator | `dhi.io/cilium-certgen:0.4.9-debian13` |
+
+Full `image.override` references bypass upstream image digests and automatic
+operator suffixes. Envoy uses the compatibility variant for the chart's
+`/usr/bin/cilium-envoy-starter` command; its DHI version follows the Cilium
+release, not the upstream Envoy image's long build tag. Hubble UI runs as
+UID/GID `65532` to match the DHI images' file ownership. Review all image pins
+in `cilium/cilium-values.yaml` whenever changing `cilium_version`. Features not
+enabled here, such as Cluster Mesh and preflight checks, need their own image
+review before enabling them.
+
+For an existing deployment that already has the credential in
+`local-path-storage`, either create it in `kube-system` using the block above
+or copy it there before applying Cilium. Keep the release name and namespace.
+
+```bash
+kubectl -n kube-system get secret dhi-pull-secret
+tofu -chdir=cilium init
+tofu -chdir=cilium plan
+tofu -chdir=cilium apply
+cilium status --wait
+kubectl -n kube-system rollout status daemonset/cilium --timeout=5m
+kubectl -n kube-system rollout status daemonset/cilium-envoy --timeout=5m
+kubectl -n kube-system rollout status deployment/cilium-operator --timeout=5m
+kubectl -n kube-system rollout status deployment/hubble-relay --timeout=5m
+kubectl -n kube-system rollout status deployment/hubble-ui --timeout=5m
+```
+
+After completing Stage 02, run the extended checks in the Tests section to
+verify networking and load balancing. Check Hubble UI and Gateway TLS after
+Stage 03. If image pulls fail, inspect pod events and the namespace-local
+Secret before retrying. To revert an existing migration, restore the prior
+Cilium values and apply this root again.
+
+### Local Path Provisioner: DHI registry access and installation
+
+The upstream chart remains pinned to `0.0.37`. Its controller uses
+`dhi.io/local-path-provisioner:0.0.37`; the separate BusyBox helper remains at
+`1.37.0`. Initialize its root:
+
+```bash
+tofu -chdir=local-path-provisioner init
+```
+
+On a **first installation only**, create the OpenTofu-managed namespace before
+copying the Secret. Skip the targeted apply on an existing installation; the
+full apply below still deploys the release:
+
+```bash
+tofu -chdir=local-path-provisioner apply \
+  -target=kubernetes_namespace_v1.local_path_storage
+```
+
+Copy the source credential from `kube-system` using the following block before
+applying the Local Path Provisioner release.
+
 #### Reuse the DHI credential across namespaces
 
 Kubernetes image-pull Secrets are namespace-scoped. Reuse the same read-only
-credential by copying `dhi-pull-secret` from `local-path-storage` into each
+credential by copying `dhi-pull-secret` from `kube-system` into each
 namespace that will run DHI workloads. Pods must reference the copy in their
 own namespace; there is no cluster-wide image-pull Secret. See the
 [Kubernetes private-registry documentation](https://kubernetes.io/docs/tasks/configure-pod-container/pull-image-private-registry/).
 
-The following Bash block requires `jq`. Run it when preparing to migrate
-workloads in `cert-manager` and `kube-system`. Both namespaces must already
-exist; on a fresh Stage 02 installation, defer the `cert-manager` copy until
-Stage 03 has created that namespace. Adjust the target list to the namespaces
-you are migrating. Do not enable shell tracing (`set -x`).
+The following Bash block requires `jq`. Target namespaces must already exist.
+For Stage 02 the target is `local-path-storage`. Add `cert-manager` to the array
+after Stage 03 creates that namespace, including during subsequent token
+rotations. Do not enable shell tracing (`set -x`).
 
 ```bash
 (
   set -euo pipefail
-  dhi_namespaces=(cert-manager kube-system)
+  dhi_namespaces=(local-path-storage)
 
   # Check every target before changing any Secrets.
   for namespace in "${dhi_namespaces[@]}"; do
@@ -385,7 +435,7 @@ you are migrating. Do not enable shell tracing (`set -x`).
   done
 
   for namespace in "${dhi_namespaces[@]}"; do
-    kubectl --namespace local-path-storage get secret dhi-pull-secret -o json |
+    kubectl --namespace kube-system get secret dhi-pull-secret -o json |
       jq --arg namespace "$namespace" '{
         apiVersion: "v1",
         kind: "Secret",
@@ -399,7 +449,7 @@ you are migrating. Do not enable shell tracing (`set -x`).
       kubectl apply -f -
   done
 
-  for namespace in local-path-storage "${dhi_namespaces[@]}"; do
+  for namespace in kube-system "${dhi_namespaces[@]}"; do
     kubectl --namespace "$namespace" get secret dhi-pull-secret
   done
 )
@@ -420,7 +470,8 @@ imagePullSecrets:
 
 Use each chart's documented setting when migrating other workloads; the values
 key may differ. Copying the Secret alone does not switch images or attach it
-to Pods. These instructions do not change the other charts' image configuration.
+to Pods. Cilium and Local Path Provisioner already reference this Secret in
+their values files; Stage 03 configures cert-manager and trust-manager too.
 
 For token rotation, rerun the creation block above with the new credential,
 then rerun the copy block for every namespace using it. Verify new image pulls

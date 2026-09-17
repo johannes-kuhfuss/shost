@@ -398,7 +398,7 @@ and trust-manager use this namespace-local copy of the Stage 02 credential:
 kubectl create namespace cert-manager --dry-run=client -o yaml | kubectl apply -f -
 (
   set -euo pipefail
-  kubectl -n local-path-storage get secret dhi-pull-secret -o json |
+  kubectl -n kube-system get secret dhi-pull-secret -o json |
     jq '{apiVersion: "v1", kind: "Secret",
          metadata: {name: "dhi-pull-secret", namespace: "cert-manager"},
          type: .type, data: .data}' |
@@ -408,7 +408,7 @@ kubectl -n cert-manager get secret dhi-pull-secret
 ```
 
 If the source Secret does not exist yet, follow the
-[Stage 02 DHI credential instructions](../../stage02/docs/Stage-02%20Automated%20Installation.md#local-path-provisioner-dhi-registry-access-and-installation).
+[Stage 02 DHI credential instructions](../../stage02/docs/Stage-02%20Automated%20Installation.md#dhi-registry-access-before-cilium).
 Repeat the copy after rotating the source credential; copies do not synchronize
 automatically. Run credential commands without shell tracing.
 
