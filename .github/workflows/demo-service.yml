@@ -20,9 +20,9 @@ jobs:
       run:
         working-directory: stage03/demo-service
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v7
         with:
           go-version-file: stage03/demo-service/go.mod
           cache-dependency-path: stage03/demo-service/go.sum
