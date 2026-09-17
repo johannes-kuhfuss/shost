@@ -366,6 +366,12 @@ in `cilium/cilium-values.yaml` whenever changing `cilium_version`. Features not
 enabled here, such as Cluster Mesh and preflight checks, need their own image
 review before enabling them.
 
+The Cilium agent Pod explicitly runs as UID/GID `0`, including its init
+containers. DHI's default UID `65532` cannot initialize the root-owned
+configuration and host CNI directories. This Pod-level setting is required
+in addition to the existing Talos capability configuration; it does not change
+the users of the operator, Relay, or UI.
+
 For an existing deployment that already has the credential in
 `local-path-storage`, either create it in `kube-system` using the block above
 or copy it there before applying Cilium. Keep the release name and namespace.

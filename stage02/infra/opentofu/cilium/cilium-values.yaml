@@ -49,6 +49,14 @@ cgroup:
 
 # Talos does not permit workloads to load kernel modules, so SYS_MODULE is
 # deliberately omitted.
+podSecurityContext:
+  # DHI defaults to UID 65532. The agent and its init containers require root
+  # for root-owned emptyDir/hostPath mounts and host network initialization.
+  # Set this at Pod level so config, sysctl, cleanup, and CNI installation inherit it.
+  runAsUser: 0
+  runAsGroup: 0
+  runAsNonRoot: false
+
 securityContext:
   capabilities:
     ciliumAgent:
