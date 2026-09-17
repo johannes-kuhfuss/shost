@@ -9,12 +9,12 @@ terraform {
 
     http = {
       source  = "hashicorp/http"
-      version = "3.6.1"
+      version = "3.6.2"
     }
 
     kubernetes = {
       source  = "hashicorp/kubernetes"
-      version = "2.38.0"
+      version = "3.2.1"
     }
 
     talos = {
