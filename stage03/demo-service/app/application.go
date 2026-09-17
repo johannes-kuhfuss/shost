@@ -49,6 +49,8 @@ func (a *Application) Start(ctx context.Context) error {
 		a.certificateStore = certstore.New(a.cfg.Server.CertFile, a.cfg.Server.KeyFile, a.log)
 		if err := a.certificateStore.Reload(); err != nil {
 			return fmt.Errorf("initial TLS certificate load failed: %w", err)
+		} else {
+			a.log.InfoContext(ctx, "Initial certificate loaded")
 		}
 	}
 	a.initRouter()
