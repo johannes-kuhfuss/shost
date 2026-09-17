@@ -10,6 +10,7 @@ import (
 	"crypto/x509/pkix"
 	"encoding/pem"
 	"fmt"
+	"log/slog"
 	"math/big"
 	"os"
 	"path/filepath"
@@ -23,7 +24,7 @@ func TestCertificateStoreReload(t *testing.T) {
 	keyFile := filepath.Join(directory, "tls.key")
 	pair := generateCertificatePair(t, 42)
 	writeCertificatePair(t, certFile, keyFile, pair)
-	store := New(certFile, keyFile)
+	store := New(certFile, keyFile, slog.Default())
 
 	if err := store.Reload(); err != nil {
 		t.Fatalf("Reload() error = %v", err)
@@ -46,7 +47,7 @@ func TestCertificateStoreReload(t *testing.T) {
 }
 
 func TestCertificateStoreBeforeInitialLoad(t *testing.T) {
-	store := New("missing.crt", "missing.key")
+	store := New("missing.crt", "missing.key", slog.Default())
 	if store.Info() != nil {
 		t.Fatal("Info() before Reload() is not nil")
 	}
@@ -65,7 +66,7 @@ func TestReloadRejectsInvalidPEM(t *testing.T) {
 	if err := os.WriteFile(keyFile, []byte("not a key"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	store := New(certFile, keyFile)
+	store := New(certFile, keyFile, slog.Default())
 	if err := store.Reload(); err == nil {
 		t.Fatal("Reload() succeeded with invalid PEM")
 	}
@@ -76,7 +77,7 @@ func TestInfoReturnsIndependentDNSNames(t *testing.T) {
 	certFile := filepath.Join(directory, "tls.crt")
 	keyFile := filepath.Join(directory, "tls.key")
 	writeCertificatePair(t, certFile, keyFile, generateCertificatePair(t, 1))
-	store := New(certFile, keyFile)
+	store := New(certFile, keyFile, slog.Default())
 	if err := store.Reload(); err != nil {
 		t.Fatal(err)
 	}
@@ -93,7 +94,7 @@ func TestConcurrentReloadAndRead(t *testing.T) {
 	certFile := filepath.Join(directory, "tls.crt")
 	keyFile := filepath.Join(directory, "tls.key")
 	writeCertificatePair(t, certFile, keyFile, generateCertificatePair(t, 1))
-	store := New(certFile, keyFile)
+	store := New(certFile, keyFile, slog.Default())
 	if err := store.Reload(); err != nil {
 		t.Fatal(err)
 	}
@@ -120,7 +121,7 @@ func TestWatchCertFolderReloadsCertificateAndStopsWithContext(t *testing.T) {
 	keyFile := filepath.Join(directory, "tls.key")
 	writeCertificatePair(t, certFile, keyFile, generateCertificatePair(t, 1))
 
-	store := New(certFile, keyFile)
+	store := New(certFile, keyFile, slog.Default())
 	if err := store.Reload(); err != nil {
 		t.Fatalf("initial Reload() error = %v", err)
 	}
@@ -157,7 +158,7 @@ func TestWatcherKeepsOldCertificateDuringInvalidRotationAndRecovers(t *testing.T
 	secondPair := generateCertificatePair(t, 2)
 	writeCertificatePair(t, certFile, keyFile, firstPair)
 
-	store := New(certFile, keyFile)
+	store := New(certFile, keyFile, slog.Default())
 	if err := store.Reload(); err != nil {
 		t.Fatalf("initial Reload() error = %v", err)
 	}
@@ -195,7 +196,7 @@ func TestReloadKeepsLastSnapshotWhenKeyDoesNotMatch(t *testing.T) {
 	secondPair := generateCertificatePair(t, 2)
 	writeCertificatePair(t, certFile, keyFile, firstPair)
 
-	store := New(certFile, keyFile)
+	store := New(certFile, keyFile, slog.Default())
 	if err := store.Reload(); err != nil {
 		t.Fatalf("initial Reload() error = %v", err)
 	}

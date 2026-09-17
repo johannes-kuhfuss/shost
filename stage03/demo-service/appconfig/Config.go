@@ -3,7 +3,7 @@ package appconfig
 import (
 	"errors"
 	"fmt"
-	"log"
+	"log/slog"
 	"net"
 	"os"
 	"path/filepath"
@@ -14,6 +14,10 @@ import (
 )
 
 type AppConfig struct {
+	Logging struct {
+		Format string `envconfig:"LOG_FORMAT" default:"text"`
+		Level  string `envconfig:"LOG_LEVEL" default:"info"`
+	}
 	Server struct {
 		Host                 string `envconfig:"SERVER_HOST"`
 		Port                 string `envconfig:"SERVER_PORT" default:"8080"`
@@ -27,7 +31,6 @@ type AppConfig struct {
 	Gin struct {
 		Mode         string `envconfig:"GIN_MODE" default:"release"`
 		TemplatePath string `envconfig:"TEMPLATE_PATH" default:"./templates/"`
-		LogToLogger  bool   `envconfig:"LOG_TO_LOGGER" default:"false"`
 	}
 }
 
@@ -37,9 +40,8 @@ var (
 
 // InitConfig initializes the configuration and sets the defaults
 func InitConfig(file string, config *AppConfig) error {
-	log.Printf("Initializing configuration from file %v...", file)
 	if err := loadConfig(file); err != nil && !errors.Is(err, os.ErrNotExist) {
-		log.Printf("Error while loading configuration from file. %v", err)
+		slog.Warn("Could not load configuration file", "file", file, "error", err)
 	}
 	if err := envconfig.Process("", config); err != nil {
 		return fmt.Errorf("could not initialize configuration: %v", err.Error())
@@ -48,7 +50,6 @@ func InitConfig(file string, config *AppConfig) error {
 	if err := validateConfig(config); err != nil {
 		return err
 	}
-	log.Print("Configuration initialized")
 	return nil
 }
 

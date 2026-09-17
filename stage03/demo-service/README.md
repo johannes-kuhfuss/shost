@@ -73,9 +73,39 @@ cert-manager.
 | `GRACEFUL_SHUTDOWN_TIME` | `10` | Seconds allowed for active requests |
 | `GIN_MODE` | `release` | Gin mode |
 | `LOG_TO_LOGGER` | `false` | Enable Gin access logs |
+| `LOG_FORMAT` | `text` | Console format: `text` or `json` |
+| `LOG_LEVEL` | `info` | Minimum severity: `debug`, `info`, `warn`, or `error` |
 
 An optional `.env` file can provide the same values. Existing process
 environment variables take precedence.
+
+## Logging
+
+The service uses Go's `log/slog` with structured attributes and writes to stderr.
+The default text output is readable in the terminal and through `kubectl logs`:
+
+```text
+time=2026-09-17T14:32:10Z level=INFO msg=Listening service.name=demo-service server.address=:8080
+```
+
+Set `LOG_FORMAT=json` for one JSON object per line. Both formats honor
+`LOG_LEVEL`. Invalid logging settings fail startup. Configuration errors before
+the logger is initialized use a bootstrap text logger.
+
+`LOG_TO_LOGGER=true` enables structured access records with the HTTP method,
+route template, response status, and duration. Responses in the 4xx range log
+at warn; 5xx responses log at error. Query strings, request headers, and raw URL
+paths are omitted. Panic recovery logs at error even when access logs are off.
+HTTP server errors and certificate watcher events use the same logger.
+
+Logging calls carry the available context so a future OpenTelemetry `otelslog`
+handler can correlate records with active spans. This change does not install
+tracing or export telemetry. JSON console output is ordinary slog JSON, not
+OTLP JSON. When adding export, combine the console handler and OTel bridge with
+`slog.NewMultiHandler`, configure service resource metadata and batched OTLP
+export, and flush the provider during shutdown. Keep console text enabled for
+operators; avoid collecting the same records through both console scraping and
+OTLP.
 
 ## Verification
 

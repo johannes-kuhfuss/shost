@@ -6,18 +6,20 @@ import (
 	"demo-service/appconfig"
 	"demo-service/appstate"
 	"demo-service/certstore"
+	"demo-service/logging"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
+	"os"
 	"sync/atomic"
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/johannes-kuhfuss/services_utils/date"
-	"github.com/johannes-kuhfuss/services_utils/logger"
 )
 
 type Application struct {
+	log              *slog.Logger
 	cfg              appconfig.AppConfig
 	state            *appstate.AppState
 	server           http.Server
@@ -36,9 +38,15 @@ func (a *Application) Start(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	logger.Info("Starting application...")
+	a.log, err = logging.New(os.Stderr, a.cfg.Logging.Format, a.cfg.Logging.Level)
+	if err != nil {
+		return err
+	}
+	slog.SetDefault(a.log)
+	a.log.InfoContext(ctx, "Configuration initialized")
+	a.log.InfoContext(ctx, "Starting application")
 	if a.cfg.Server.UseTLS {
-		a.certificateStore = certstore.New(a.cfg.Server.CertFile, a.cfg.Server.KeyFile)
+		a.certificateStore = certstore.New(a.cfg.Server.CertFile, a.cfg.Server.KeyFile, a.log)
 		if err := a.certificateStore.Reload(); err != nil {
 			return fmt.Errorf("initial TLS certificate load failed: %w", err)
 		}
@@ -97,33 +105,33 @@ func (a *Application) runServer(ctx context.Context, serve func() error, watchEr
 		return err
 	case err := <-watchErr:
 		lifecycleErr = fmt.Errorf("certificate watcher failed: %w", err)
-		logger.Error("Certificate watcher failed. Shutting down.", err)
+		a.logger().ErrorContext(ctx, "Certificate watcher failed; shutting down", "error", err)
 	case <-ctx.Done():
 	}
 
-	logger.Infof("Allowing traffic to drain for %v...", drainDuration)
+	a.logger().InfoContext(ctx, "Draining traffic", "drain.duration", drainDuration)
 	a.shuttingDown.Store(true)
 	drainTimer := time.NewTimer(drainDuration)
 	defer drainTimer.Stop()
 
 	select {
 	case <-drainTimer.C:
-		logger.Info("Request draining period completed.")
+		a.logger().InfoContext(ctx, "Request draining period completed")
 
 	case err := <-serveErr:
 		// The server failed while we were draining.
 		return err
 	}
-	logger.Info("Shutdown requested. Shutting down...")
+	a.logger().InfoContext(ctx, "Shutting down")
 
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
 	defer cancel()
 
 	shutdownErr := a.server.Shutdown(shutdownCtx)
 	if shutdownErr != nil {
-		logger.Error("Graceful server shutdown failed.", shutdownErr)
+		a.logger().ErrorContext(shutdownCtx, "Graceful server shutdown failed", "error", shutdownErr)
 		if closeErr := a.server.Close(); closeErr != nil {
-			logger.Error("Forced server shutdown failed", closeErr)
+			a.logger().ErrorContext(shutdownCtx, "Forced server shutdown failed", "error", closeErr)
 		}
 	}
 
@@ -141,11 +149,8 @@ func (a *Application) runServer(ctx context.Context, serve func() error, watchEr
 func (a *Application) initRouter() {
 	gin.SetMode(a.cfg.Gin.Mode)
 	router := gin.New()
-	if a.cfg.Gin.LogToLogger {
-		gin.DefaultWriter = logger.GetLogger()
-		router.Use(gin.Logger())
-	}
-	router.Use(gin.Recovery())
+	router.Use(requestLogger(a.logger()))
+	router.Use(recoveryLogger(a.logger()))
 	router.SetTrustedProxies(nil)
 	//globPath := filepath.Join(a.cfg.Gin.TemplatePath, "*.tmpl")
 	//router.LoadHTMLGlob(globPath)
@@ -176,6 +181,7 @@ func (a *Application) initServer() {
 
 	a.server = http.Server{
 		Addr:              a.state.Runtime.ListenAddr,
+		ErrorLog:          slog.NewLogLogger(a.logger().Handler(), slog.LevelError),
 		Handler:           a.state.Runtime.Router,
 		ReadTimeout:       5 * time.Second,
 		ReadHeaderTimeout: 5 * time.Second,
@@ -250,8 +256,8 @@ func (a *Application) startServer() error {
 	var (
 		err error
 	)
-	logger.Infof("Listening on %v", a.state.Runtime.ListenAddr)
-	a.state.Runtime.StartDate = date.GetNowUtc()
+	a.logger().Info("Listening", "server.address", a.state.Runtime.ListenAddr)
+	a.state.Runtime.StartDate = time.Now().UTC()
 	if a.cfg.Server.UseTLS {
 		err = a.server.ListenAndServeTLS("", "")
 	} else {
@@ -261,4 +267,11 @@ func (a *Application) startServer() error {
 		return nil
 	}
 	return fmt.Errorf("serve HTTP: %w", err)
+}
+
+func (a *Application) logger() *slog.Logger {
+	if a.log != nil {
+		return a.log
+	}
+	return slog.Default()
 }

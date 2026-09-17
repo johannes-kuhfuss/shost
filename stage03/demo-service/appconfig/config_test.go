@@ -19,6 +19,8 @@ var configEnvironment = []string{
 	"GIN_MODE",
 	"TEMPLATE_PATH",
 	"LOG_TO_LOGGER",
+	"LOG_FORMAT",
+	"LOG_LEVEL",
 }
 
 func TestInitConfigDefaultsWithoutEnvFile(t *testing.T) {
@@ -32,6 +34,9 @@ func TestInitConfigDefaultsWithoutEnvFile(t *testing.T) {
 	}
 	if config.Server.Port != "8080" || config.Server.TLSPort != "8443" {
 		t.Fatalf("ports = (%q, %q), want (8080, 8443)", config.Server.Port, config.Server.TLSPort)
+	}
+	if config.Logging.Format != "text" || config.Logging.Level != "info" {
+		t.Fatalf("logging defaults = %v, want text/info", config.Logging)
 	}
 	if config.Server.GracefulShutdownTime != 10 || config.Server.DrainRequestsTime != 12 {
 		t.Fatalf("shutdown durations = (%d, %d), want (10, 12)", config.Server.GracefulShutdownTime, config.Server.DrainRequestsTime)

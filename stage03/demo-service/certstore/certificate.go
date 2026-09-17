@@ -8,13 +8,13 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"log/slog"
 	"path/filepath"
 	"strings"
 	"sync/atomic"
 	"time"
 
 	"github.com/fsnotify/fsnotify"
-	"github.com/johannes-kuhfuss/services_utils/logger"
 )
 
 type certificateSnapshot struct {
@@ -23,6 +23,7 @@ type certificateSnapshot struct {
 }
 
 type CertificateStore struct {
+	log     *slog.Logger
 	current atomic.Pointer[certificateSnapshot]
 
 	certFile string
@@ -39,8 +40,9 @@ type CertificateInfo struct {
 	SHA256Fingerprint string    `json:"sha256Fingerprint"`
 }
 
-func New(certFile, keyFile string) *CertificateStore {
+func New(certFile, keyFile string, logger *slog.Logger) *CertificateStore {
 	return &CertificateStore{
+		log:      logger,
 		certFile: certFile,
 		keyFile:  keyFile,
 	}
@@ -132,7 +134,7 @@ func (s *CertificateStore) watchCertFolder(ctx context.Context, debounceDuration
 		if err := watcher.Add(folder); err != nil {
 			return fmt.Errorf("could not add directory %q to watcher: %w", folder, err)
 		}
-		logger.Infof("watching for certificate changes in %v", folder)
+		s.log.InfoContext(ctx, "Watching for certificate changes", "directory", folder)
 	}
 
 	if ready != nil {
@@ -178,15 +180,15 @@ func (s *CertificateStore) watchCertFolder(ctx context.Context, debounceDuration
 			oldInfo := s.Info()
 
 			if err := s.Reload(); err != nil {
-				logger.Warnf("could not reload certificate; continuing with old certificate: %v", err)
+				s.log.WarnContext(ctx, "Could not reload certificate; continuing with old certificate", "error", err)
 				continue
 			}
 			newInfo := s.Info()
-			logger.Infof(
-				"reloaded TLS certificate: old fingerprint=%s, new fingerprint=%s, expires=%s",
-				certificateFingerprint(oldInfo),
-				certificateFingerprint(newInfo),
-				newInfo.NotAfter,
+			s.log.InfoContext(ctx,
+				"TLS certificate reloaded",
+				"certificate.previous_fingerprint", certificateFingerprint(oldInfo),
+				"certificate.fingerprint", certificateFingerprint(newInfo),
+				"certificate.expires_at", newInfo.NotAfter,
 			)
 
 		case watcherErr, ok := <-watcher.Errors:

@@ -11,6 +11,7 @@ import (
 	"encoding/pem"
 	"errors"
 	"io"
+	"log/slog"
 	"math/big"
 	"net"
 	"net/http"
@@ -98,7 +99,7 @@ func TestCertificateEndpointWhenTLSIsDisabled(t *testing.T) {
 
 func TestCertificateEndpointWhenCertificateIsNotLoaded(t *testing.T) {
 	application := newTestApplication(t)
-	application.certificateStore = certstore.New("missing.crt", "missing.key")
+	application.certificateStore = certstore.New("missing.crt", "missing.key", slog.Default())
 	response := performRequest(application.state.Runtime.Router, "/certificate")
 	if response.Code != http.StatusServiceUnavailable {
 		t.Fatalf("status = %d, want %d", response.Code, http.StatusServiceUnavailable)
@@ -115,7 +116,7 @@ func TestCertificateEndpointReturnsLoadedMetadata(t *testing.T) {
 	writeTestCertificate(t, certFile, keyFile)
 
 	application := newTestApplication(t)
-	application.certificateStore = certstore.New(certFile, keyFile)
+	application.certificateStore = certstore.New(certFile, keyFile, slog.Default())
 	if err := application.certificateStore.Reload(); err != nil {
 		t.Fatalf("Reload() error = %v", err)
 	}
@@ -142,7 +143,7 @@ func TestInitServerConfiguresHTTPAndTLS(t *testing.T) {
 	tlsApplication.cfg.Server.Host = "127.0.0.1"
 	tlsApplication.cfg.Server.TLSPort = "8444"
 	tlsApplication.cfg.Server.UseTLS = true
-	tlsApplication.certificateStore = certstore.New("missing.crt", "missing.key")
+	tlsApplication.certificateStore = certstore.New("missing.crt", "missing.key", slog.Default())
 	tlsApplication.initServer()
 	if tlsApplication.server.Addr != "127.0.0.1:8444" {
 		t.Fatalf("TLS server address = %q, want 127.0.0.1:8444", tlsApplication.server.Addr)
