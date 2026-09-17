@@ -5,9 +5,11 @@ import (
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
+	"crypto/sha256"
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/pem"
+	"fmt"
 	"math/big"
 	"os"
 	"path/filepath"
@@ -16,10 +18,12 @@ import (
 )
 
 func TestCertificateStoreReload(t *testing.T) {
-	store := New(
-		filepath.Join("..", "test-cert", "cert.pem"),
-		filepath.Join("..", "test-cert", "key.pem"),
-	)
+	directory := t.TempDir()
+	certFile := filepath.Join(directory, "tls.crt")
+	keyFile := filepath.Join(directory, "tls.key")
+	pair := generateCertificatePair(t, 42)
+	writeCertificatePair(t, certFile, keyFile, pair)
+	store := New(certFile, keyFile)
 
 	if err := store.Reload(); err != nil {
 		t.Fatalf("Reload() error = %v", err)
@@ -30,6 +34,84 @@ func TestCertificateStoreReload(t *testing.T) {
 	if _, err := store.GetCertificate(nil); err != nil {
 		t.Fatalf("GetCertificate() error = %v", err)
 	}
+
+	info := store.Info()
+	if info.Subject != "demo-service" || info.Issuer != "demo-service" || info.SerialNumber != "42" {
+		t.Fatalf("certificate info = %+v, want generated certificate metadata", info)
+	}
+	wantFingerprint := fmt.Sprintf("%X", sha256.Sum256(pair.certDER))
+	if info.SHA256Fingerprint != wantFingerprint {
+		t.Fatalf("fingerprint = %q, want %q", info.SHA256Fingerprint, wantFingerprint)
+	}
+}
+
+func TestCertificateStoreBeforeInitialLoad(t *testing.T) {
+	store := New("missing.crt", "missing.key")
+	if store.Info() != nil {
+		t.Fatal("Info() before Reload() is not nil")
+	}
+	if _, err := store.GetCertificate(nil); err == nil {
+		t.Fatal("GetCertificate() before Reload() succeeded")
+	}
+}
+
+func TestReloadRejectsInvalidPEM(t *testing.T) {
+	directory := t.TempDir()
+	certFile := filepath.Join(directory, "tls.crt")
+	keyFile := filepath.Join(directory, "tls.key")
+	if err := os.WriteFile(certFile, []byte("not a certificate"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(keyFile, []byte("not a key"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	store := New(certFile, keyFile)
+	if err := store.Reload(); err == nil {
+		t.Fatal("Reload() succeeded with invalid PEM")
+	}
+}
+
+func TestInfoReturnsIndependentDNSNames(t *testing.T) {
+	directory := t.TempDir()
+	certFile := filepath.Join(directory, "tls.crt")
+	keyFile := filepath.Join(directory, "tls.key")
+	writeCertificatePair(t, certFile, keyFile, generateCertificatePair(t, 1))
+	store := New(certFile, keyFile)
+	if err := store.Reload(); err != nil {
+		t.Fatal(err)
+	}
+
+	first := store.Info()
+	first.DNSNames[0] = "modified.example"
+	if got := store.Info().DNSNames[0]; got == "modified.example" {
+		t.Fatal("Info() exposed mutable certificate state")
+	}
+}
+
+func TestConcurrentReloadAndRead(t *testing.T) {
+	directory := t.TempDir()
+	certFile := filepath.Join(directory, "tls.crt")
+	keyFile := filepath.Join(directory, "tls.key")
+	writeCertificatePair(t, certFile, keyFile, generateCertificatePair(t, 1))
+	store := New(certFile, keyFile)
+	if err := store.Reload(); err != nil {
+		t.Fatal(err)
+	}
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		for range 100 {
+			_ = store.Info()
+			_, _ = store.GetCertificate(nil)
+		}
+	}()
+	for range 100 {
+		if err := store.Reload(); err != nil {
+			t.Fatalf("Reload() error = %v", err)
+		}
+	}
+	<-done
 }
 
 func TestWatchCertFolderReloadsCertificateAndStopsWithContext(t *testing.T) {
@@ -67,6 +149,44 @@ func TestWatchCertFolderReloadsCertificateAndStopsWithContext(t *testing.T) {
 	}
 }
 
+func TestWatcherKeepsOldCertificateDuringInvalidRotationAndRecovers(t *testing.T) {
+	directory := t.TempDir()
+	certFile := filepath.Join(directory, "tls.crt")
+	keyFile := filepath.Join(directory, "tls.key")
+	firstPair := generateCertificatePair(t, 1)
+	secondPair := generateCertificatePair(t, 2)
+	writeCertificatePair(t, certFile, keyFile, firstPair)
+
+	store := New(certFile, keyFile)
+	if err := store.Reload(); err != nil {
+		t.Fatalf("initial Reload() error = %v", err)
+	}
+	initialFingerprint := store.Info().SHA256Fingerprint
+
+	ctx, cancel := context.WithCancel(context.Background())
+	ready := make(chan struct{})
+	result := make(chan error, 1)
+	go func() { result <- store.watchCertFolder(ctx, 30*time.Millisecond, ready) }()
+	waitForSignal(t, ready, "certificate watcher to start")
+
+	if err := os.WriteFile(certFile, secondPair.certPEM, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(100 * time.Millisecond)
+	if got := store.Info().SHA256Fingerprint; got != initialFingerprint {
+		t.Fatalf("invalid intermediate rotation replaced certificate: got %q, want %q", got, initialFingerprint)
+	}
+
+	if err := os.WriteFile(keyFile, secondPair.keyPEM, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	waitForFingerprintChange(t, store, initialFingerprint)
+	cancel()
+	if err := waitForWatcherResult(t, result); err != nil {
+		t.Fatalf("watcher returned an error after recovery: %v", err)
+	}
+}
+
 func TestReloadKeepsLastSnapshotWhenKeyDoesNotMatch(t *testing.T) {
 	directory := t.TempDir()
 	certFile := filepath.Join(directory, "tls.crt")
@@ -96,6 +216,7 @@ func TestReloadKeepsLastSnapshotWhenKeyDoesNotMatch(t *testing.T) {
 type certificatePair struct {
 	certPEM []byte
 	keyPEM  []byte
+	certDER []byte
 }
 
 func generateCertificatePair(t *testing.T, serial int64) certificatePair {
@@ -128,6 +249,7 @@ func generateCertificatePair(t *testing.T, serial int64) certificatePair {
 	return certificatePair{
 		certPEM: pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: certificateDER}),
 		keyPEM:  pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: privateKeyDER}),
+		certDER: certificateDER,
 	}
 }
 

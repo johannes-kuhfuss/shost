@@ -45,7 +45,6 @@ func (a *Application) Start(ctx context.Context) error {
 	}
 	a.initRouter()
 	a.initServer()
-	a.wireApp()
 	if err := a.mapUrls(); err != nil {
 		return err
 	}
@@ -160,8 +159,7 @@ func (a *Application) initServer() {
 
 	if a.cfg.Server.UseTLS {
 		tlsConfig = tls.Config{
-			PreferServerCipherSuites: true,
-			MinVersion:               tls.VersionTLS13,
+			MinVersion: tls.VersionTLS13,
 			CurvePreferences: []tls.CurveID{
 				tls.X25519,
 				tls.CurveP256,
@@ -187,12 +185,7 @@ func (a *Application) initServer() {
 	}
 	if a.cfg.Server.UseTLS {
 		a.server.TLSConfig = &tlsConfig
-		a.server.TLSNextProto = make(map[string]func(*http.Server, *tls.Conn, http.Handler))
 	}
-}
-
-// wireApp initializes the services in the right order and injects the dependencies
-func (a *Application) wireApp() {
 }
 
 // mapUrls defines the handlers for the available URLs
@@ -234,6 +227,13 @@ func (a *Application) live(c *gin.Context) {
 }
 
 func (a *Application) certificate(c *gin.Context) {
+	if a.certificateStore == nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{
+			"error": "TLS is disabled",
+		})
+		return
+	}
+
 	info := a.certificateStore.Info()
 	if info == nil {
 		c.JSON(http.StatusServiceUnavailable, gin.H{

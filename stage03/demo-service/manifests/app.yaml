@@ -26,7 +26,7 @@ spec:
       labels:
         app.kubernetes.io/name: demo-service
     spec:
-      # Allow for graceful shutdown
+      # 12s drain + 10s shutdown timeout leaves 8s of safety margin.
       terminationGracePeriodSeconds: 30
       securityContext:
         # Comply with PSA Restricted 
@@ -43,7 +43,7 @@ spec:
           image: docker.io/johanneskuhfuss/demo-service:latest
           imagePullPolicy: Always
 
-          # Specify environement variables
+          # Specify environment variables
           env:
             - name: SERVER_HOST
               value: "0.0.0.0"
@@ -53,6 +53,10 @@ spec:
               value: "8443"
             - name: USE_TLS
               value: "true"
+            - name: DRAIN_REQUESTS_TIME
+              value: "12"
+            - name: GRACEFUL_SHUTDOWN_TIME
+              value: "10"
             - name: GIN_MODE
               value: "release"
             - name: CERT_FILE

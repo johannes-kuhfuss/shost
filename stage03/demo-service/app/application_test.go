@@ -2,17 +2,28 @@ package app
 
 import (
 	"context"
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
+	"crypto/tls"
+	"crypto/x509"
+	"crypto/x509/pkix"
+	"encoding/pem"
 	"errors"
 	"io"
+	"math/big"
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 
 	"demo-service/appstate"
+	"demo-service/certstore"
 
 	"github.com/gin-gonic/gin"
 )
@@ -36,6 +47,111 @@ func TestReadinessEndpointReflectsShutdownState(t *testing.T) {
 	}
 	if !strings.Contains(response.Body.String(), `"status":"shutting down"`) {
 		t.Fatalf("ready response during shutdown = %q, want shutting down status", response.Body.String())
+	}
+}
+
+func TestBasicEndpoints(t *testing.T) {
+	application := newTestApplication(t)
+	tests := []struct {
+		path string
+		body string
+	}{
+		{path: "/", body: `{"ping":"pong"}`},
+		{path: "/health/startup", body: `{"endpoint":"startup probe","status":"ok"}`},
+		{path: "/health/live", body: `{"endpoint":"live probe","status":"ok"}`},
+	}
+
+	for _, test := range tests {
+		t.Run(test.path, func(t *testing.T) {
+			response := performRequest(application.state.Runtime.Router, test.path)
+			if response.Code != http.StatusOK {
+				t.Fatalf("status = %d, want %d", response.Code, http.StatusOK)
+			}
+			if got := strings.TrimSpace(response.Body.String()); got != test.body {
+				t.Fatalf("body = %q, want %q", got, test.body)
+			}
+			if got := response.Header().Get("Content-Type"); got != "application/json; charset=utf-8" {
+				t.Fatalf("Content-Type = %q, want JSON", got)
+			}
+		})
+	}
+}
+
+func TestUnknownEndpointReturnsNotFound(t *testing.T) {
+	application := newTestApplication(t)
+	response := performRequest(application.state.Runtime.Router, "/not-found")
+	if response.Code != http.StatusNotFound {
+		t.Fatalf("status = %d, want %d", response.Code, http.StatusNotFound)
+	}
+}
+
+func TestCertificateEndpointWhenTLSIsDisabled(t *testing.T) {
+	application := newTestApplication(t)
+	response := performRequest(application.state.Runtime.Router, "/certificate")
+	if response.Code != http.StatusServiceUnavailable {
+		t.Fatalf("status = %d, want %d", response.Code, http.StatusServiceUnavailable)
+	}
+	if got := strings.TrimSpace(response.Body.String()); got != `{"error":"TLS is disabled"}` {
+		t.Fatalf("body = %q, want TLS-disabled error", got)
+	}
+}
+
+func TestCertificateEndpointWhenCertificateIsNotLoaded(t *testing.T) {
+	application := newTestApplication(t)
+	application.certificateStore = certstore.New("missing.crt", "missing.key")
+	response := performRequest(application.state.Runtime.Router, "/certificate")
+	if response.Code != http.StatusServiceUnavailable {
+		t.Fatalf("status = %d, want %d", response.Code, http.StatusServiceUnavailable)
+	}
+	if got := strings.TrimSpace(response.Body.String()); got != `{"error":"no certificate loaded"}` {
+		t.Fatalf("body = %q, want no-certificate error", got)
+	}
+}
+
+func TestCertificateEndpointReturnsLoadedMetadata(t *testing.T) {
+	directory := t.TempDir()
+	certFile := filepath.Join(directory, "tls.crt")
+	keyFile := filepath.Join(directory, "tls.key")
+	writeTestCertificate(t, certFile, keyFile)
+
+	application := newTestApplication(t)
+	application.certificateStore = certstore.New(certFile, keyFile)
+	if err := application.certificateStore.Reload(); err != nil {
+		t.Fatalf("Reload() error = %v", err)
+	}
+	response := performRequest(application.state.Runtime.Router, "/certificate")
+	if response.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", response.Code, http.StatusOK)
+	}
+	if !strings.Contains(response.Body.String(), `"subject":"demo-service"`) ||
+		!strings.Contains(response.Body.String(), `"serialNumber":"7"`) {
+		t.Fatalf("body = %q, want certificate metadata", response.Body.String())
+	}
+}
+
+func TestInitServerConfiguresHTTPAndTLS(t *testing.T) {
+	httpApplication := &Application{state: appstate.New()}
+	httpApplication.cfg.Server.Host = "127.0.0.1"
+	httpApplication.cfg.Server.Port = "8081"
+	httpApplication.initServer()
+	if httpApplication.server.Addr != "127.0.0.1:8081" || httpApplication.server.TLSConfig != nil {
+		t.Fatalf("HTTP server = addr %q, TLS config %v", httpApplication.server.Addr, httpApplication.server.TLSConfig)
+	}
+
+	tlsApplication := &Application{state: appstate.New()}
+	tlsApplication.cfg.Server.Host = "127.0.0.1"
+	tlsApplication.cfg.Server.TLSPort = "8444"
+	tlsApplication.cfg.Server.UseTLS = true
+	tlsApplication.certificateStore = certstore.New("missing.crt", "missing.key")
+	tlsApplication.initServer()
+	if tlsApplication.server.Addr != "127.0.0.1:8444" {
+		t.Fatalf("TLS server address = %q, want 127.0.0.1:8444", tlsApplication.server.Addr)
+	}
+	if tlsApplication.server.TLSConfig == nil || tlsApplication.server.TLSConfig.MinVersion != tls.VersionTLS13 {
+		t.Fatal("TLS server was not configured for TLS 1.3")
+	}
+	if tlsApplication.server.TLSConfig.GetCertificate == nil {
+		t.Fatal("TLS server has no dynamic certificate callback")
 	}
 }
 
@@ -310,5 +426,35 @@ func waitForResult(t *testing.T, result <-chan error) error {
 	case <-time.After(2 * time.Second):
 		t.Fatal("timed out waiting for runServer result")
 		return nil
+	}
+}
+
+func writeTestCertificate(t *testing.T, certFile, keyFile string) {
+	t.Helper()
+	privateKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	template := &x509.Certificate{
+		SerialNumber: big.NewInt(7),
+		Subject:      pkix.Name{CommonName: "demo-service"},
+		NotBefore:    time.Now().Add(-time.Minute),
+		NotAfter:     time.Now().Add(time.Hour),
+		KeyUsage:     x509.KeyUsageDigitalSignature,
+		ExtKeyUsage:  []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
+	}
+	certificateDER, err := x509.CreateCertificate(rand.Reader, template, template, &privateKey.PublicKey, privateKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	privateKeyDER, err := x509.MarshalPKCS8PrivateKey(privateKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(certFile, pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: certificateDER}), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(keyFile, pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: privateKeyDER}), 0o600); err != nil {
+		t.Fatal(err)
 	}
 }

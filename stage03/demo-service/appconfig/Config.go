@@ -1,10 +1,13 @@
 package appconfig
 
 import (
+	"errors"
 	"fmt"
 	"log"
+	"net"
 	"os"
 	"path/filepath"
+	"strconv"
 
 	"github.com/joho/godotenv"
 	"github.com/kelseyhightower/envconfig"
@@ -17,9 +20,9 @@ type AppConfig struct {
 		TLSPort              string `envconfig:"SERVER_TLS_PORT" default:"8443"`
 		GracefulShutdownTime int    `envconfig:"GRACEFUL_SHUTDOWN_TIME" default:"10"`
 		DrainRequestsTime    int    `envconfig:"DRAIN_REQUESTS_TIME" default:"12"`
-		UseTLS               bool   `envconfig:"USE_TLS" default:"true"`
-		CertFile             string `envconfig:"CERT_FILE" default:"./test-cert/cert.pem"`
-		KeyFile              string `envconfig:"KEY_FILE" default:"./test-cert/key.pem"`
+		UseTLS               bool   `envconfig:"USE_TLS" default:"false"`
+		CertFile             string `envconfig:"CERT_FILE" default:"/var/run/demo-service/tls/tls.crt"`
+		KeyFile              string `envconfig:"KEY_FILE" default:"/var/run/demo-service/tls/tls.key"`
 	}
 	Gin struct {
 		Mode         string `envconfig:"GIN_MODE" default:"release"`
@@ -35,7 +38,7 @@ var (
 // InitConfig initializes the configuration and sets the defaults
 func InitConfig(file string, config *AppConfig) error {
 	log.Printf("Initializing configuration from file %v...", file)
-	if err := loadConfig(file); err != nil {
+	if err := loadConfig(file); err != nil && !errors.Is(err, os.ErrNotExist) {
 		log.Printf("Error while loading configuration from file. %v", err)
 	}
 	if err := envconfig.Process("", config); err != nil {
@@ -53,6 +56,18 @@ func validateConfig(config *AppConfig) error {
 	if config.Server.GracefulShutdownTime <= 0 {
 		return fmt.Errorf("graceful shutdown time must be greater than 0")
 	}
+	if config.Server.DrainRequestsTime < 0 {
+		return fmt.Errorf("drain requests time must not be negative")
+	}
+	if err := validatePort("server port", config.Server.Port); err != nil {
+		return err
+	}
+	if err := validatePort("server TLS port", config.Server.TLSPort); err != nil {
+		return err
+	}
+	if _, err := net.ResolveTCPAddr("tcp", net.JoinHostPort(config.Server.Host, config.Server.Port)); err != nil {
+		return fmt.Errorf("invalid server host %q: %w", config.Server.Host, err)
+	}
 	if config.Server.UseTLS {
 		if _, err := os.Stat(config.Server.CertFile); err != nil {
 			return fmt.Errorf("TLS certificate file is not accessible: %w", err)
@@ -64,14 +79,19 @@ func validateConfig(config *AppConfig) error {
 	return nil
 }
 
-// checkFilePath does sanity-checking on file paths
+func validatePort(name, value string) error {
+	port, err := strconv.Atoi(value)
+	if err != nil || port < 1 || port > 65535 {
+		return fmt.Errorf("%s must be a number between 1 and 65535", name)
+	}
+	return nil
+}
+
+// checkFilePath normalizes a configured file path. Accessibility is validated
+// separately when the corresponding feature is enabled.
 func checkFilePath(filePath *string) {
 	if *filePath != "" {
 		*filePath = filepath.Clean(*filePath)
-		_, err := os.Stat(*filePath)
-		if err != nil {
-			log.Printf("error checking file %v: %v", *filePath, err)
-		}
 	}
 }
 

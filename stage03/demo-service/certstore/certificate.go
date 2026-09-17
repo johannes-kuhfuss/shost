@@ -77,6 +77,7 @@ func (s *CertificateStore) Info() *CertificateInfo {
 		return nil
 	}
 	info := snapshot.info
+	info.DNSNames = append([]string(nil), snapshot.info.DNSNames...)
 	return &info
 }
 
