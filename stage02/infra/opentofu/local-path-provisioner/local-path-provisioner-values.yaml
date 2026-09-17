@@ -1,3 +1,11 @@
+image:
+  repository: dhi.io/local-path-provisioner
+  tag: "0.0.37"
+
+# Create this Secret in local-path-storage before applying the Helm release.
+imagePullSecrets:
+  - name: dhi-pull-secret
+
 nodePathMap:
   - node: DEFAULT_PATH_FOR_NON_LISTED_NODES
     paths:

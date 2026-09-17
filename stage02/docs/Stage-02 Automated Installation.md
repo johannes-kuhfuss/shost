@@ -295,13 +295,99 @@ tofu -chdir=cilium plan
 tofu -chdir=cilium apply
 ```
 
-Install Local Path Provisioner:
+### Local Path Provisioner: DHI registry access and installation
+
+The upstream chart remains pinned to `0.0.37`. Its controller image is
+`dhi.io/local-path-provisioner:0.0.37`, the standard Docker Hardened Image
+runtime variant. The separate BusyBox helper remains at `1.37.0`.
+See the [DHI image guide](https://hub.docker.com/hardened-images/catalog/dhi/local-path-provisioner/guides)
+and [Docker's Kubernetes authentication instructions](https://docs.docker.com/dhi/how-to/use/#use-with-kubernetes).
+
+Run the following Bash commands on the deployment machine from
+`stage02/infra/opentofu/`. Secret creation also requires `base64` and a Docker
+Hub personal access token with read access (or an organization access token
+with access to public repositories, using the organization name as username).
+
+Initialize the root and select the target cluster before creating the Secret:
 
 ```bash
 tofu -chdir=local-path-provisioner init
+../scripts/extract-talos-config.sh
+kubectl config current-context
+kubectl cluster-info
+```
+
+Verify that kubectl points at the cluster managed by this OpenTofu state. The
+extraction script preserves existing configuration files; use its `--overwrite`
+option if those files need replacing.
+
+On a **first installation only**, create the OpenTofu-managed namespace before
+creating the Secret. This targeted apply bootstraps the namespace; the full
+apply below still deploys the release. Skip this step on an existing installation:
+
+```bash
+tofu -chdir=local-path-provisioner apply \
+  -target=kubernetes_namespace_v1.local_path_storage
+```
+
+Create or update `dhi-pull-secret` in `local-path-storage`. This uses a temporary,
+private Docker configuration so only the DHI credential is uploaded. The token
+is entered interactively, encoded into the temporary file, and kept out of Git and
+OpenTofu configuration/state. Do not run this block with shell tracing enabled.
+
+```bash
+(
+  set -euo pipefail
+  umask 077
+  dhi_config_dir="$(mktemp -d)"
+  trap 'rm -rf -- "$dhi_config_dir"' EXIT
+  read -r -p 'Docker Hub username (or organization name): ' dhi_username
+  read -r -s -p 'Read-only Docker access token: ' dhi_token
+  printf '\n'
+  dhi_auth="$(printf '%s:%s' "$dhi_username" "$dhi_token" | base64 | tr -d '\r\n')"
+  printf '{"auths":{"dhi.io":{"auth":"%s"}}}\n' "$dhi_auth" \
+    > "$dhi_config_dir/config.json"
+  unset dhi_token
+  unset dhi_auth
+  kubectl --namespace local-path-storage create secret generic dhi-pull-secret \
+    --type=kubernetes.io/dockerconfigjson \
+    --from-file=.dockerconfigjson="$dhi_config_dir/config.json" \
+    --dry-run=client -o yaml | kubectl apply -f -
+)
+```
+
+Repeat this block when rotating the token. The Helm values reference the Secret
+through `imagePullSecrets`; workstation authentication alone does not give the
+cluster access. Recreate the Secret if the namespace is deleted and reinstalled.
+
+Review and apply the complete root. On an existing installation, expect an
+update to the Helm release, with no storage migration:
+
+```bash
 tofu -chdir=local-path-provisioner plan
 tofu -chdir=local-path-provisioner apply
+kubectl --namespace local-path-storage rollout status \
+  deployment/local-path-provisioner --timeout=5m
+kubectl --namespace local-path-storage get deployment local-path-provisioner \
+  -o jsonpath='{.spec.template.spec.containers[0].image}'
+printf '\n'
+kubectl --namespace local-path-storage logs deployment/local-path-provisioner \
+  --tail=100
 ```
+
+The Deployment should use `dhi.io/local-path-provisioner:0.0.37`. The existing
+non-root UID/GID `65534`, dropped capabilities, and read-only root filesystem
+remain configured. Validate actual provisioning with the `--extended` checks
+in the Tests section after completing installation; these create a PVC and
+consuming pod and check file writes/reads. A PVC alone stays pending because
+the StorageClass uses `WaitForFirstConsumer`. Confirm the temporary PVC/PV and
+helper pods are cleaned up after the checks.
+
+If the rollout reports `ImagePullBackOff`, inspect the pod events and verify
+the Secret's namespace, registry, and token access. The release uses atomic
+upgrades. To explicitly revert the image migration, set `image.repository` to
+`docker.io/rancher/local-path-provisioner` and `image.tag` to `v0.0.37`, remove
+the DHI `imagePullSecrets` entry, and plan/apply this root again.
 
 The provisioner uses the encrypted Talos user volume mounted at
 `/var/mnt/local-storage` on every node. The `local-path` StorageClass is the
@@ -309,7 +395,7 @@ cluster default and uses `WaitForFirstConsumer`. Requested PVC capacity is not
 enforced individually; all local volumes on a node share the space on that
 node's data disk.
 
-Configure Cilium:
+### Configure Cilium resources
 
 ```bash
 tofu -chdir=cilium-config init
