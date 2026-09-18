@@ -5,8 +5,8 @@ metadata:
   namespace: observability
   annotations:
     cert-manager.io/cluster-issuer: tc-jku-web-ca
-    cert-manager.io/duration: 2160h
-    cert-manager.io/renew-before: 720h
+    cert-manager.io/duration: 168h
+    cert-manager.io/renew-before: 48h
     cert-manager.io/private-key-algorithm: ECDSA
     cert-manager.io/private-key-size: "256"
     cert-manager.io/private-key-encoding: PKCS8
