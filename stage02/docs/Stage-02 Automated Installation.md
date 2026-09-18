@@ -446,7 +446,6 @@ recover; skipping the check does not repair those services by itself.
 
 ### Local Path Provisioner: DHI registry access and installation
 
-
 The upstream chart remains pinned to `0.0.37`. Its controller uses
 `dhi.io/local-path-provisioner:0.0.37`; the separate BusyBox helper remains at
 `1.37.0`. Initialize its root:
