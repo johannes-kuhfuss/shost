@@ -366,6 +366,11 @@ in `cilium/cilium-values.yaml` whenever changing `cilium_version`. Features not
 enabled here, such as Cluster Mesh and preflight checks, need their own image
 review before enabling them.
 
+Hubble Relay sets `GOPS_CONFIG_DIR=/tmp/gops` to use the chart's writable
+`/tmp` emptyDir. The DHI default `/home/gops` is on the read-only root
+filesystem and causes Relay to exit with `failed to start gops agent`.
+Relay retains its non-root user and read-only root filesystem.
+
 The Cilium agent Pod explicitly runs as UID/GID `0`, including its init
 containers. DHI's default UID `65532` cannot initialize the root-owned
 configuration and host CNI directories. This Pod-level setting is required
