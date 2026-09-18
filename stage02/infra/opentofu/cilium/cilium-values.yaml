@@ -31,6 +31,11 @@ certgen:
 ipam:
   mode: kubernetes
 
+cni:
+  # Talos has no AWS VPC CNI rules to remove. Avoid the upstream postStart
+  # hook that invokes iptables-save/restore for AWS migration cleanup.
+  iptablesRemoveAWSRules: false
+
 kubeProxyReplacement: true
 
 # Use Talos KubePrism as the Kubernetes API endpoint.
