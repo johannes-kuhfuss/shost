@@ -401,7 +401,46 @@ Stage 03. If image pulls fail, inspect pod events and the namespace-local
 Secret before retrying. To revert an existing migration, restore the prior
 Cilium values and apply this root again.
 
+#### Recover state imports while Cilium is unavailable
+
+The Talos health data source can also run during CLI imports. If Cilium is down,
+the kubelet serving-certificate approver may remain Pending, causing the health
+check to time out before the import completes. Temporarily disable only this
+check for recovery; Helm's rollout waiting and atomic behavior remain enabled.
+
+From `stage02/infra/opentofu/`, first check whether the resource was recorded:
+
+```bash
+tofu -chdir=cilium state list
+```
+
+For an existing Gateway API resource that is absent from this state, import it
+with the recovery variable, for example:
+
+```bash
+tofu -chdir=cilium import -var='check_cluster_health=false' \
+  'kubernetes_manifest.gateway_api["CustomResourceDefinition/gateways.gateway.networking.k8s.io"]' \
+  'apiVersion=apiextensions.k8s.io/v1,kind=CustomResourceDefinition,name=gateways.gateway.networking.k8s.io'
+```
+
+Use the same variable on every recovery import. Confirm each address appears
+in `state list` before proceeding. After importing all missing resources,
+apply the Cilium fixes with the check temporarily disabled, then restore the
+default health verification:
+
+```bash
+tofu -chdir=cilium plan -var='check_cluster_health=false'
+tofu -chdir=cilium apply -var='check_cluster_health=false'
+cilium status --wait
+tofu -chdir=cilium apply
+```
+
+Do not permanently set `check_cluster_health=false` in tfvars. The final apply
+must pass with the default `true` after networking and certificate approval
+recover; skipping the check does not repair those services by itself.
+
 ### Local Path Provisioner: DHI registry access and installation
+
 
 The upstream chart remains pinned to `0.0.37`. Its controller uses
 `dhi.io/local-path-provisioner:0.0.37`; the separate BusyBox helper remains at

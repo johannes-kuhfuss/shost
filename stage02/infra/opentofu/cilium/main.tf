@@ -139,6 +139,8 @@ resource "helm_release" "cilium" {
 
 # Do not finish the Cilium apply until Talos and Kubernetes report healthy.
 data "talos_cluster_health" "health" {
+  count = var.check_cluster_health ? 1 : 0
+
   depends_on = [helm_release.cilium]
 
   client_configuration = data.terraform_remote_state.talos.outputs.talos_client_configuration
