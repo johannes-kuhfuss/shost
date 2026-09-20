@@ -510,8 +510,11 @@ Install the pinned upstream chart with the
 [Docker Hardened trust-manager image](https://hub.docker.com/hardened-images/catalog/dhi/trust-manager/guides)
 in the existing `cert-manager` namespace. The values reference the same
 `dhi-pull-secret` created in step 3 and explicitly pin the image to `0.24.0`. They
-disable the unused public CA package and Secret targets; trust-manager only
-needs to read the root source ConfigMap and write target ConfigMaps:
+disable the unused public CA package. ConfigMap targets distribute general
+workload trust. Secret targets are also enabled for CNPG, with writes restricted
+to `tc-jku-cnpg-ca`; this additionally grants cluster-wide Secret read access.
+The separate CNPG Bundle is installed by the
+[Authentik database setup](../authentik/README.md):
 
 ```bash
 helm upgrade --install trust-manager \

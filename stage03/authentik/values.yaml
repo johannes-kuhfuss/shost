@@ -1,0 +1,121 @@
+# Upstream authentik chart and application 2026.8.3.
+global:
+  image:
+    repository: ghcr.io/goauthentik/server
+    tag: "2026.8.3"
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 1000
+    runAsGroup: 1000
+    fsGroup: 1000
+    seccompProfile:
+      type: RuntimeDefault
+  deploymentStrategy:
+    type: Recreate
+  env:
+    - name: AUTHENTIK_SECRET_KEY
+      valueFrom:
+        secretKeyRef:
+          name: authentik-secrets
+          key: secret-key
+    - name: AUTHENTIK_POSTGRESQL__USER
+      valueFrom:
+        secretKeyRef:
+          name: authentik-db-app
+          key: username
+    - name: AUTHENTIK_POSTGRESQL__PASSWORD
+      valueFrom:
+        secretKeyRef:
+          name: authentik-db-app
+          key: password
+  volumes:
+    - name: internal-ca
+      configMap:
+        name: tc-jku-internal-ca
+    - name: data
+      persistentVolumeClaim:
+        claimName: authentik-data
+  volumeMounts:
+    - name: internal-ca
+      mountPath: /var/run/authentik/ca
+      readOnly: true
+    - name: data
+      mountPath: /data
+
+authentik:
+  postgresql:
+    host: authentik-db-rw.authentik.svc.cluster.local
+    port: 5432
+    name: authentik
+    sslmode: verify-full
+    sslrootcert: /var/run/authentik/ca/ca.crt
+  storage:
+    backend: file
+    file:
+      path: /data
+  error_reporting:
+    enabled: false
+  # Outposts and their Kubernetes permissions are configured per application later.
+  outposts:
+    discover: false
+
+postgresql:
+  enabled: false
+
+serviceAccount:
+  create: false
+
+server:
+  replicas: 1
+  serviceAccountName: authentik-app
+  automountServiceAccountToken: false
+  containerSecurityContext:
+    allowPrivilegeEscalation: false
+    capabilities:
+      drop: [ALL]
+  resources:
+    requests:
+      cpu: 250m
+      memory: 512Mi
+    limits:
+      memory: 1536Mi
+  ingress:
+    enabled: false
+
+worker:
+  replicas: 1
+  serviceAccountName: authentik-app
+  automountServiceAccountToken: false
+  containerSecurityContext:
+    allowPrivilegeEscalation: false
+    capabilities:
+      drop: [ALL]
+  resources:
+    requests:
+      cpu: 100m
+      memory: 512Mi
+    limits:
+      memory: 1Gi
+  # Both workloads share one node-local RWO volume, including on a larger cluster.
+  affinity:
+    podAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        - labelSelector:
+            matchLabels:
+              app.kubernetes.io/name: authentik
+              app.kubernetes.io/instance: authentik
+              app.kubernetes.io/component: server
+          topologyKey: kubernetes.io/hostname
+  volumes:
+    - name: backend-tls
+      secret:
+        secretName: authentik-backend-tls
+  volumeMounts:
+    # Directory mount lets projected Secret updates reach certificate discovery.
+    - name: backend-tls
+      mountPath: /certs/authentik-backend
+      readOnly: true
+
+blueprints:
+  configMaps:
+    - authentik-platform-blueprints

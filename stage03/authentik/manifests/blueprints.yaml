@@ -1,0 +1,29 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: authentik-platform-blueprints
+  namespace: authentik
+data:
+  backend-tls.yaml: |
+    version: 1
+    metadata:
+      name: shost - Backend TLS
+    entries:
+      - model: authentik_blueprints.metaapplyblueprint
+        attrs:
+          identifiers:
+            name: Default - Brand
+          required: true
+      - model: authentik_crypto.certificatekeypair
+        id: backend-certificate
+        identifiers:
+          managed: goauthentik.io/crypto/discovered/authentik-backend
+        attrs:
+          name: authentik-backend
+          certificate_data: !File /certs/authentik-backend/tls.crt
+          key_data: !File /certs/authentik-backend/tls.key
+      - model: authentik_brands.brand
+        identifiers:
+          default: true
+        attrs:
+          web_certificate: !KeyOf backend-certificate

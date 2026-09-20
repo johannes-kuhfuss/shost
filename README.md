@@ -8,3 +8,4 @@ This is not ready for primetime. Use at your own peril.
 - [Stage 02 - Automated Talos and Cilium installation](stage02/docs/Stage-02%20Automated%20Installation.md)
 - [Stage 03 - cert-manager and Hubble HTTPS](stage03/cert-manager/README.md)
 - [Stage 03 - CloudNativePG operator](stage03/cloudnative-pg/README.md)
+- [Stage 03 - Authentik with CloudNativePG](stage03/authentik/README.md)

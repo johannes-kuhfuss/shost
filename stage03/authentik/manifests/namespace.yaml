@@ -1,0 +1,8 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: authentik
+  labels:
+    internal-web-gateway-access: "true"
+    trust.tc.jku.internal/internal-ca: "true"
+    trust.tc.jku.internal/cnpg-ca: "true"

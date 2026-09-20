@@ -1,0 +1,52 @@
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: authentik-db
+  namespace: authentik
+spec:
+  secretName: authentik-db-tls
+  secretTemplate:
+    labels:
+      cnpg.io/reload: ""
+  duration: 2160h
+  renewBefore: 360h
+  issuerRef:
+    group: cert-manager.io
+    kind: ClusterIssuer
+    name: tc-jku-cluster-ca
+  dnsNames:
+    - authentik-db-rw.authentik.svc.cluster.local
+    - authentik-db-r.authentik.svc.cluster.local
+    - authentik-db-ro.authentik.svc.cluster.local
+  privateKey:
+    algorithm: ECDSA
+    size: 256
+    encoding: PKCS8
+    rotationPolicy: Always
+  usages:
+    - digital signature
+    - server auth
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: authentik-backend
+  namespace: authentik
+spec:
+  secretName: authentik-backend-tls
+  duration: 2160h
+  renewBefore: 360h
+  issuerRef:
+    group: cert-manager.io
+    kind: ClusterIssuer
+    name: tc-jku-cluster-ca
+  dnsNames:
+    - authentik-server.authentik.svc.cluster.local
+  privateKey:
+    algorithm: ECDSA
+    size: 256
+    encoding: PKCS8
+    rotationPolicy: Always
+  usages:
+    - digital signature
+    - server auth

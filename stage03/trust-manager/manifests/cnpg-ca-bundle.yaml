@@ -1,0 +1,18 @@
+apiVersion: trust.cert-manager.io/v1alpha1
+kind: Bundle
+metadata:
+  name: tc-jku-cnpg-ca
+spec:
+  sources:
+    - configMap:
+        name: tc-jku-internal-root-ca
+        key: ca.crt
+  target:
+    secret:
+      key: ca.crt
+      metadata:
+        labels:
+          cnpg.io/reload: ""
+    namespaceSelector:
+      matchLabels:
+        trust.tc.jku.internal/cnpg-ca: "true"

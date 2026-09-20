@@ -1,0 +1,35 @@
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: authentik-db
+  namespace: authentik
+spec:
+  # Single-node test installation; no automated backup is configured yet.
+  instances: 1
+  imageName: ghcr.io/cloudnative-pg/postgresql:18.6-minimal-trixie
+  imagePullSecrets:
+    # Also needed by the init container using the DHI operator image.
+    - name: dhi-pull-secret
+  enableSuperuserAccess: false
+  bootstrap:
+    initdb:
+      database: authentik
+      owner: authentik
+      # CNPG generates authentik-db-app with the application credentials.
+  certificates:
+    serverTLSSecret: authentik-db-tls
+    serverCASecret: tc-jku-cnpg-ca
+  postgresql:
+    pg_hba:
+      - hostnossl all all all reject
+    parameters:
+      password_encryption: scram-sha-256
+  storage:
+    storageClass: local-path
+    size: 10Gi
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      memory: 1Gi

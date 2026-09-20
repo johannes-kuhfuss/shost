@@ -16,10 +16,13 @@ crds:
 defaultPackage:
   enabled: false
 
-# ConfigMaps are sufficient for public CA certificates and require less RBAC
-# than Secret targets.
+# CNPG requires a Secret for its public server CA bundle. Restrict writable
+# Secret names; enabling this also grants cluster-wide Secret read access.
 secretTargets:
-  enabled: false
+  enabled: true
+  authorizedSecretsAll: false
+  authorizedSecrets:
+    - tc-jku-cnpg-ca
 
 # Reject accidental non-CA material in configured Bundle sources.
 filterNonCACerts:
