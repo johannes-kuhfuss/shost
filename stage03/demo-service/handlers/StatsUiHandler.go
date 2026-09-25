@@ -52,13 +52,30 @@ func (uh *StatsUiHandler) ProbesPage(c *gin.Context) {
 		probes = append(probes, dto.ProbeStatus{
 			Name:          probe.name,
 			Count:         probe.stats.Count,
+			SuccessCount:  probe.stats.SuccessCount,
+			FailureCount:  probe.stats.FailureCount,
 			LastProbeDate: formatDate(probe.stats.LastProbeDate),
 		})
 	}
 	c.HTML(http.StatusOK, "probes.page.tmpl", gin.H{
-		"title":  "Probe Status",
-		"probes": probes,
+		"title":            "Probe Status",
+		"probes":           probes,
+		"livenessDisabled": uh.State.Runtime.LivenessDisabled(),
 	})
+}
+
+// SetLiveness controls the in-memory liveness failure simulation.
+func (uh *StatsUiHandler) SetLiveness(c *gin.Context) {
+	switch c.PostForm("action") {
+	case "disable":
+		uh.State.Runtime.SetLivenessDisabled(true)
+	case "enable":
+		uh.State.Runtime.SetLivenessDisabled(false)
+	default:
+		c.String(http.StatusBadRequest, "Invalid liveness action")
+		return
+	}
+	c.Redirect(http.StatusSeeOther, "/probes")
 }
 
 // AboutPage is the handler for the page displaying a short description of the program and its license

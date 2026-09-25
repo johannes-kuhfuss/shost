@@ -6,6 +6,17 @@
         <div class="row">
             <div class="col">
                 <h3>Probe Status</h3>
+                <div class="mb-3">
+                    <p>Liveness: <strong>{{ if .livenessDisabled }}Disabled (HTTP 503){{ else }}Enabled (HTTP 200){{ end }}</strong></p>
+                    <p>Disabling liveness intentionally causes Kubernetes to restart this container after its configured failure threshold. Liveness is enabled again when the application restarts.</p>
+                    <form method="post" action="/probes/liveness">
+                        {{ if .livenessDisabled }}
+                        <button class="btn btn-success" type="submit" name="action" value="enable">Enable liveness</button>
+                        {{ else }}
+                        <button class="btn btn-danger" type="submit" name="action" value="disable">Disable liveness</button>
+                        {{ end }}
+                    </form>
+                </div>
                 <p>Probe requests since the service started. Dates are shown in UTC. Refresh to see the latest values.</p>
                 <div class="table-responsive">
                     <table class="table table-striped table-sm">
@@ -14,6 +25,8 @@
                                 <th scope="col">Probe</th>
                                 <th scope="col">Last Probe Date (UTC)</th>
                                 <th scope="col">Probe Count</th>
+                                <th scope="col">Successful</th>
+                                <th scope="col">Failed</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -22,6 +35,8 @@
                                 <th scope="row">{{ .Name }}</th>
                                 <td>{{ .LastProbeDate }}</td>
                                 <td>{{ .Count }}</td>
+                                <td>{{ .SuccessCount }}</td>
+                                <td>{{ .FailureCount }}</td>
                             </tr>
                             {{ end }}
                         </tbody>

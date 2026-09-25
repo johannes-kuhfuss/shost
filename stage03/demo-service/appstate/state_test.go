@@ -10,7 +10,7 @@ func TestConcurrentProbeStats(t *testing.T) {
 	state := New()
 	for _, probe := range []struct {
 		name   string
-		record func()
+		record func(bool)
 		stats  func() ProbeStats
 	}{
 		{"startup", state.Runtime.RecordStartupProbe, state.Runtime.StartupProbeStats},
@@ -25,17 +25,17 @@ func TestConcurrentProbeStats(t *testing.T) {
 			var workers sync.WaitGroup
 			for range 8 {
 				workers.Go(func() {
-					for range 1000 {
-						probe.record()
+					for i := range 1000 {
+						probe.record(i%2 == 0)
 						got := probe.stats()
-						if got.Count < 1 || got.LastProbeDate.Before(started) || got.LastProbeDate.Location() != time.UTC {
+						if got.Count < 1 || got.Count != got.SuccessCount+got.FailureCount || got.LastProbeDate.Before(started) || got.LastProbeDate.Location() != time.UTC {
 							t.Errorf("invalid snapshot: %+v", got)
 						}
 					}
 				})
 			}
 			workers.Wait()
-			if got := probe.stats(); got.Count != 8000 || got.LastProbeDate.After(time.Now()) {
+			if got := probe.stats(); got.Count != 8000 || got.SuccessCount != 4000 || got.FailureCount != 4000 || got.LastProbeDate.After(time.Now()) {
 				t.Fatalf("final stats = %+v, want 8000 requests with a past timestamp", got)
 			}
 		})

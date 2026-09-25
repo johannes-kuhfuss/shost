@@ -211,6 +211,7 @@ func (a *Application) mapUrls() error {
 	a.state.Runtime.Router.GET("/", a.statsUiHandler.StatusPage)
 	a.state.Runtime.Router.GET("/ping", a.pong)
 	a.state.Runtime.Router.GET("/probes", a.statsUiHandler.ProbesPage)
+	a.state.Runtime.Router.POST("/probes/liveness", a.statsUiHandler.SetLiveness)
 	a.state.Runtime.Router.GET("/health/startup", a.startup)
 	a.state.Runtime.Router.GET("/health/ready", a.ready)
 	a.state.Runtime.Router.GET("/health/live", a.live)
@@ -224,15 +225,16 @@ func (a *Application) pong(c *gin.Context) {
 }
 
 func (a *Application) startup(c *gin.Context) {
-	a.state.Runtime.RecordStartupProbe()
+	a.state.Runtime.RecordStartupProbe(true)
 	c.JSON(http.StatusOK, gin.H{
 		"endpoint": "startup probe",
 		"status":   "ok"})
 }
 
 func (a *Application) ready(c *gin.Context) {
-	a.state.Runtime.RecordReadinessProbe()
-	if !a.shuttingDown.Load() {
+	success := !a.shuttingDown.Load()
+	a.state.Runtime.RecordReadinessProbe(success)
+	if success {
 		c.JSON(http.StatusOK, gin.H{
 			"endpoint": "ready probe",
 			"status":   "ok"})
@@ -244,7 +246,15 @@ func (a *Application) ready(c *gin.Context) {
 }
 
 func (a *Application) live(c *gin.Context) {
-	a.state.Runtime.RecordLivenessProbe()
+	success := !a.state.Runtime.LivenessDisabled()
+	a.state.Runtime.RecordLivenessProbe(success)
+	if !success {
+		c.JSON(http.StatusServiceUnavailable, gin.H{
+			"endpoint": "live probe",
+			"status":   "disabled",
+		})
+		return
+	}
 	c.JSON(http.StatusOK, gin.H{
 		"endpoint": "live probe",
 		"status":   "ok"})
