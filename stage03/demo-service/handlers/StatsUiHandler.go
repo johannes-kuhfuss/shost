@@ -6,6 +6,7 @@ import (
 	"demo-service/appconfig"
 	"demo-service/appstate"
 	"demo-service/dto"
+	"net"
 	"net/http"
 	"strconv"
 	"time"
@@ -91,6 +92,9 @@ func (uh *StatsUiHandler) getState() dto.State {
 		currentState dto.State
 	)
 	currentState.ListeningAddr = uh.State.Runtime.ListenAddr
+	if host, port, err := net.SplitHostPort(currentState.ListeningAddr); err == nil && host == "" {
+		currentState.ListeningAddr = net.JoinHostPort("0.0.0.0", port)
+	}
 	currentState.PodName = uh.Cfg.Kubernetes.PodName
 	currentState.PodIP = uh.Cfg.Kubernetes.PodIP
 	currentState.PodNamespace = uh.Cfg.Kubernetes.PodNamespace
