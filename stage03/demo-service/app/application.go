@@ -10,8 +10,10 @@ import (
 	"demo-service/logging"
 	"errors"
 	"fmt"
+	"html/template"
 	"io/fs"
 	"log/slog"
+	"net"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -22,6 +24,7 @@ import (
 )
 
 type Application struct {
+	router           *gin.Engine
 	log              *slog.Logger
 	cfg              appconfig.AppConfig
 	state            *appstate.AppState
@@ -57,9 +60,11 @@ func (a *Application) Start(ctx context.Context) error {
 			a.log.InfoContext(ctx, "Initial certificate loaded")
 		}
 	}
-	a.initRouter()
+	if err := a.initRouter(); err != nil {
+		return err
+	}
 	a.initServer()
-	a.statsUiHandler = handlers.NewStatsUiHandlerWithContext(ctx, &a.cfg, a.state)
+	a.statsUiHandler = handlers.NewStatsUiHandler(&a.cfg, a.state)
 	if err := a.mapUrls(); err != nil {
 		return err
 	}
@@ -153,16 +158,21 @@ func (a *Application) runServer(ctx context.Context, serve func() error, watchEr
 }
 
 // initRouter initializes gin-gonic as the router
-func (a *Application) initRouter() {
+func (a *Application) initRouter() error {
 	gin.SetMode(a.cfg.Gin.Mode)
 	router := gin.New()
 	router.Use(requestLogger(a.logger()))
 	router.Use(recoveryLogger(a.logger()))
 	router.SetTrustedProxies(nil)
 	globPath := filepath.Join(a.cfg.Gin.TemplatePath, "*.tmpl")
-	router.LoadHTMLGlob(globPath)
+	templates, err := template.ParseGlob(globPath)
+	if err != nil {
+		return fmt.Errorf("load HTML templates from %q: %w", globPath, err)
+	}
+	router.SetHTMLTemplate(templates)
 
-	a.state.Runtime.Router = router
+	a.router = router
+	return nil
 }
 
 // initServer checks whether https is enabled and initializes the web server accordingly
@@ -181,15 +191,15 @@ func (a *Application) initServer() {
 		}
 	}
 	if a.cfg.Server.UseTLS {
-		a.state.Runtime.ListenAddr = fmt.Sprintf("%s:%s", a.cfg.Server.Host, a.cfg.Server.TLSPort)
+		a.state.Runtime.ListenAddr = net.JoinHostPort(a.cfg.Server.Host, a.cfg.Server.TLSPort)
 	} else {
-		a.state.Runtime.ListenAddr = fmt.Sprintf("%s:%s", a.cfg.Server.Host, a.cfg.Server.Port)
+		a.state.Runtime.ListenAddr = net.JoinHostPort(a.cfg.Server.Host, a.cfg.Server.Port)
 	}
 
 	a.server = http.Server{
 		Addr:              a.state.Runtime.ListenAddr,
 		ErrorLog:          slog.NewLogLogger(a.logger().Handler(), slog.LevelError),
-		Handler:           a.state.Runtime.Router,
+		Handler:           a.router,
 		ReadTimeout:       5 * time.Second,
 		ReadHeaderTimeout: 5 * time.Second,
 		WriteTimeout:      5 * time.Second,
@@ -207,17 +217,19 @@ func (a *Application) mapUrls() error {
 	if err != nil {
 		return err
 	}
-	a.state.Runtime.Router.StaticFS("/static", http.FS(staticRoot))
-	a.state.Runtime.Router.GET("/", a.statsUiHandler.StatusPage)
-	a.state.Runtime.Router.GET("/ping", a.pong)
-	a.state.Runtime.Router.GET("/probes", a.statsUiHandler.ProbesPage)
-	a.state.Runtime.Router.POST("/probes/liveness", a.statsUiHandler.SetLiveness)
-	a.state.Runtime.Router.POST("/probes/readiness", a.statsUiHandler.DisableReadiness)
-	a.state.Runtime.Router.GET("/health/startup", a.startup)
-	a.state.Runtime.Router.GET("/health/ready", a.ready)
-	a.state.Runtime.Router.GET("/health/live", a.live)
-	a.state.Runtime.Router.GET("/certificate", a.certificate)
-	a.state.Runtime.Router.GET("/about", a.statsUiHandler.AboutPage)
+	a.router.StaticFS("/static", http.FS(staticRoot))
+	a.router.GET("/", a.statsUiHandler.StatusPage)
+	a.router.GET("/ping", a.pong)
+	a.router.GET("/probes", a.statsUiHandler.ProbesPage)
+	a.router.POST("/probes/liveness", a.statsUiHandler.SetLiveness)
+	a.router.POST("/probes/readiness", a.statsUiHandler.DisableReadiness)
+	a.router.GET("/health/startup", a.startup)
+	a.router.GET("/health/ready", a.ready)
+	a.router.GET("/health/live", a.live)
+	a.router.GET("/certificate", func(c *gin.Context) {
+		handlers.CertificatePage(c, a.certificateStore, a.state.Runtime.LastCertRenewDate())
+	})
+	a.router.GET("/about", a.statsUiHandler.AboutPage)
 	return nil
 }
 
@@ -266,34 +278,13 @@ func (a *Application) live(c *gin.Context) {
 		"status":   "ok"})
 }
 
-func (a *Application) certificate(c *gin.Context) {
-	data := gin.H{"title": "Certificate"}
-	if a.certificateStore == nil {
-		data["error"] = "TLS is disabled"
-		c.HTML(http.StatusServiceUnavailable, "certificate.page.tmpl", data)
-		return
-	}
-
-	info := a.certificateStore.Info()
-	if info == nil {
-		data["error"] = "No certificate loaded"
-		c.HTML(http.StatusServiceUnavailable, "certificate.page.tmpl", data)
-		return
-	}
-
-	data["certificate"] = info
-	data["notBefore"] = info.NotBefore.UTC().Format(time.RFC3339)
-	data["notAfter"] = info.NotAfter.UTC().Format(time.RFC3339)
-	c.HTML(http.StatusOK, "certificate.page.tmpl", data)
-}
-
 // startServer starts the preconfigured web server
 func (a *Application) startServer() error {
 	var (
 		err error
 	)
 	a.logger().Info("Listening", "server.address", a.state.Runtime.ListenAddr)
-	a.state.Runtime.StartDateDate = time.Now().UTC()
+	a.state.Runtime.StartDate = time.Now().UTC()
 	if a.cfg.Server.UseTLS {
 		err = a.server.ListenAndServeTLS("", "")
 	} else {

@@ -3,3 +3,4 @@
 cert/
 Dockerfile*
 README.md
+e2e/

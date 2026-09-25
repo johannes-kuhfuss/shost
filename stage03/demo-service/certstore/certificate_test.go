@@ -11,6 +11,7 @@ import (
 	"demo-service/appstate"
 	"encoding/pem"
 	"fmt"
+	"io"
 	"log/slog"
 	"math/big"
 	"os"
@@ -160,7 +161,9 @@ func TestWatcherKeepsOldCertificateDuringInvalidRotationAndRecovers(t *testing.T
 	state := appstate.New()
 	writeCertificatePair(t, certFile, keyFile, firstPair)
 
-	store := New(certFile, keyFile, slog.Default())
+	events := make(chan string, 64)
+	logger := slog.New(&watcherEventHandler{Handler: slog.NewTextHandler(io.Discard, nil), events: events})
+	store := New(certFile, keyFile, logger)
 	if err := store.Reload(); err != nil {
 		t.Fatalf("initial Reload() error = %v", err)
 	}
@@ -175,7 +178,7 @@ func TestWatcherKeepsOldCertificateDuringInvalidRotationAndRecovers(t *testing.T
 	}()
 	waitForSignal(t, ready, "certificate watcher to start")
 	writeCertificatePair(t, certFile, keyFile, firstPair)
-	time.Sleep(100 * time.Millisecond)
+	waitForWatcherEvent(t, events, "TLS certificate reloaded")
 	if !state.Runtime.LastCertRenewDate().IsZero() {
 		t.Fatal("unchanged certificate recorded as renewed")
 	}
@@ -183,7 +186,7 @@ func TestWatcherKeepsOldCertificateDuringInvalidRotationAndRecovers(t *testing.T
 	if err := os.WriteFile(certFile, secondPair.certPEM, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	time.Sleep(100 * time.Millisecond)
+	waitForWatcherEvent(t, events, "Could not reload certificate; continuing with old certificate")
 	if got := store.Info().SHA256Fingerprint; got != initialFingerprint {
 		t.Fatalf("invalid intermediate rotation replaced certificate: got %q, want %q", got, initialFingerprint)
 	}
@@ -235,6 +238,32 @@ type certificatePair struct {
 	certPEM []byte
 	keyPEM  []byte
 	certDER []byte
+}
+
+type watcherEventHandler struct {
+	slog.Handler
+	events chan<- string
+}
+
+func (h *watcherEventHandler) Handle(_ context.Context, record slog.Record) error {
+	h.events <- record.Message
+	return nil
+}
+
+func waitForWatcherEvent(t *testing.T, events <-chan string, want string) {
+	t.Helper()
+	timer := time.NewTimer(2 * time.Second)
+	defer timer.Stop()
+	for {
+		select {
+		case message := <-events:
+			if message == want {
+				return
+			}
+		case <-timer.C:
+			t.Fatalf("timed out waiting for watcher event %q", want)
+		}
+	}
 }
 
 func generateCertificatePair(t *testing.T, serial int64) certificatePair {

@@ -22,6 +22,7 @@ RUN CGO_ENABLED=0 GOOS=linux go build \
 FROM scratch
 
 COPY --from=build /out/demo-service /demo-service
+COPY --from=build /src/templates /templates
 
 USER 65532:65532
 

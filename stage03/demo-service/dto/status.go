@@ -13,5 +13,4 @@ type State struct {
 	CertFile             string
 	KeyFile              string
 	ServiceStartDate     string
-	LastCertRenewDate    string
 }

@@ -2,9 +2,9 @@
 package handlers
 
 import (
-	"context"
 	"demo-service/appconfig"
 	"demo-service/appstate"
+	"demo-service/certstore"
 	"demo-service/dto"
 	"net"
 	"net/http"
@@ -19,11 +19,7 @@ type StatsUiHandler struct {
 	State *appstate.AppState
 }
 
-func NewStatsUiHandlerWithState(cfg *appconfig.AppConfig, state *appstate.AppState) StatsUiHandler {
-	return NewStatsUiHandlerWithContext(context.Background(), cfg, state)
-}
-
-func NewStatsUiHandlerWithContext(ctx context.Context, cfg *appconfig.AppConfig, state *appstate.AppState) StatsUiHandler {
+func NewStatsUiHandler(cfg *appconfig.AppConfig, state *appstate.AppState) StatsUiHandler {
 	return StatsUiHandler{
 		Cfg:   cfg,
 		State: state,
@@ -135,8 +131,7 @@ func (uh *StatsUiHandler) getState() dto.State {
 	currentState.UseTls = strconv.FormatBool(uh.Cfg.Server.UseTLS)
 	currentState.CertFile = uh.Cfg.Server.CertFile
 	currentState.KeyFile = uh.Cfg.Server.KeyFile
-	currentState.ServiceStartDate = formatDate(uh.State.Runtime.StartDateDate)
-	currentState.LastCertRenewDate = formatDate(uh.State.Runtime.LastCertRenewDate())
+	currentState.ServiceStartDate = formatDate(uh.State.Runtime.StartDate)
 
 	return currentState
 }
@@ -147,4 +142,26 @@ func formatDate(d time.Time) string {
 	} else {
 		return d.Format(time.RFC3339)
 	}
+}
+
+func CertificatePage(c *gin.Context, store *certstore.CertificateStore, lastRenewed time.Time) {
+	data := gin.H{"title": "Certificate"}
+	if store == nil {
+		data["error"] = "TLS is disabled"
+		c.HTML(http.StatusServiceUnavailable, "certificate.page.tmpl", data)
+		return
+	}
+
+	info := store.Info()
+	if info == nil {
+		data["error"] = "No certificate loaded"
+		c.HTML(http.StatusServiceUnavailable, "certificate.page.tmpl", data)
+		return
+	}
+
+	data["certificate"] = info
+	data["lastRenewed"] = formatDate(lastRenewed)
+	data["notBefore"] = info.NotBefore.UTC().Format(time.RFC3339)
+	data["notAfter"] = info.NotAfter.UTC().Format(time.RFC3339)
+	c.HTML(http.StatusOK, "certificate.page.tmpl", data)
 }

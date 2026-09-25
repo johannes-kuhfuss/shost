@@ -33,6 +33,22 @@ jobs:
       - name: Vet
         run: go vet ./...
 
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: stage03/demo-service/e2e/package-lock.json
+
+      - name: Install browser test dependencies
+        working-directory: stage03/demo-service/e2e
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium
+
+      - name: Browser readiness recovery test
+        working-directory: stage03/demo-service/e2e
+        run: npm test
+
       - name: Validate Kubernetes manifests
         run: >-
           docker run --rm

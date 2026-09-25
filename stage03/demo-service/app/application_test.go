@@ -47,7 +47,7 @@ func TestStatusPageDisplaysKubernetesMetadata(t *testing.T) {
 			if err := appconfig.InitConfig(filepath.Join(t.TempDir(), "missing.env"), &a.cfg); err != nil {
 				t.Fatal(err)
 			}
-			response := performRequest(a.state.Runtime.Router, "/")
+			response := performRequest(a.router, "/")
 			if response.Code != http.StatusOK {
 				t.Fatalf("status page returned %d", response.Code)
 			}
@@ -67,7 +67,7 @@ func TestStatusPageDisplaysKubernetesMetadata(t *testing.T) {
 func TestReadinessEndpointReflectsShutdownState(t *testing.T) {
 	application := newTestApplication(t)
 
-	response := performRequest(application.state.Runtime.Router, "/health/ready")
+	response := performRequest(application.router, "/health/ready")
 	if response.Code != http.StatusOK {
 		t.Fatalf("ready status before shutdown = %d, want %d", response.Code, http.StatusOK)
 	}
@@ -77,7 +77,7 @@ func TestReadinessEndpointReflectsShutdownState(t *testing.T) {
 
 	application.shuttingDown.Store(true)
 
-	response = performRequest(application.state.Runtime.Router, "/health/ready")
+	response = performRequest(application.router, "/health/ready")
 	if response.Code != http.StatusServiceUnavailable {
 		t.Fatalf("ready status during shutdown = %d, want %d", response.Code, http.StatusServiceUnavailable)
 	}
@@ -99,7 +99,7 @@ func TestBasicEndpoints(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.path, func(t *testing.T) {
-			response := performRequest(application.state.Runtime.Router, test.path)
+			response := performRequest(application.router, test.path)
 			if response.Code != http.StatusOK {
 				t.Fatalf("status = %d, want %d", response.Code, http.StatusOK)
 			}
@@ -115,7 +115,7 @@ func TestBasicEndpoints(t *testing.T) {
 
 func TestUnknownEndpointReturnsNotFound(t *testing.T) {
 	application := newTestApplication(t)
-	response := performRequest(application.state.Runtime.Router, "/not-found")
+	response := performRequest(application.router, "/not-found")
 	if response.Code != http.StatusNotFound {
 		t.Fatalf("status = %d, want %d", response.Code, http.StatusNotFound)
 	}
@@ -123,7 +123,7 @@ func TestUnknownEndpointReturnsNotFound(t *testing.T) {
 
 func TestCertificateEndpointWhenTLSIsDisabled(t *testing.T) {
 	application := newTestApplication(t)
-	response := performRequest(application.state.Runtime.Router, "/certificate")
+	response := performRequest(application.router, "/certificate")
 	if response.Code != http.StatusServiceUnavailable {
 		t.Fatalf("status = %d, want %d", response.Code, http.StatusServiceUnavailable)
 	}
@@ -135,7 +135,7 @@ func TestCertificateEndpointWhenTLSIsDisabled(t *testing.T) {
 func TestCertificateEndpointWhenCertificateIsNotLoaded(t *testing.T) {
 	application := newTestApplication(t)
 	application.certificateStore = certstore.New("missing.crt", "missing.key", slog.Default())
-	response := performRequest(application.state.Runtime.Router, "/certificate")
+	response := performRequest(application.router, "/certificate")
 	if response.Code != http.StatusServiceUnavailable {
 		t.Fatalf("status = %d, want %d", response.Code, http.StatusServiceUnavailable)
 	}
@@ -155,7 +155,7 @@ func TestCertificateEndpointReturnsLoadedMetadata(t *testing.T) {
 	if err := application.certificateStore.Reload(); err != nil {
 		t.Fatalf("Reload() error = %v", err)
 	}
-	response := performRequest(application.state.Runtime.Router, "/certificate")
+	response := performRequest(application.router, "/certificate")
 	if response.Code != http.StatusOK {
 		t.Fatalf("status = %d, want %d", response.Code, http.StatusOK)
 	}
@@ -205,7 +205,7 @@ func TestRunServerDrainsTrafficAndCompletesActiveRequest(t *testing.T) {
 	release := func() { releaseOnce.Do(func() { close(releaseRequest) }) }
 	t.Cleanup(release)
 
-	application.state.Runtime.Router.GET("/slow", func(c *gin.Context) {
+	application.router.GET("/slow", func(c *gin.Context) {
 		close(requestStarted)
 		<-releaseRequest
 		c.String(http.StatusOK, "completed")
@@ -371,9 +371,11 @@ func newTestApplication(t *testing.T) *Application {
 
 	application := &Application{state: appstate.New()}
 	application.cfg.Gin.TemplatePath = "../templates"
-	application.initRouter()
+	if err := application.initRouter(); err != nil {
+		t.Fatal(err)
+	}
 	application.initServer()
-	application.statsUiHandler = handlers.NewStatsUiHandlerWithState(&application.cfg, application.state)
+	application.statsUiHandler = handlers.NewStatsUiHandler(&application.cfg, application.state)
 	if err := application.mapUrls(); err != nil {
 		t.Fatalf("mapUrls() error = %v", err)
 	}

@@ -3,15 +3,12 @@ package appstate
 import (
 	"sync"
 	"time"
-
-	"github.com/gin-gonic/gin"
 )
 
 type RuntimeState struct {
-	Router                 *gin.Engine
 	ListenAddr             string
-	StartDateDate          time.Time
-	Mu                     sync.RWMutex
+	StartDate              time.Time
+	mu                     sync.RWMutex
 	lastCertRenewDate      time.Time
 	startupProbe           ProbeStats
 	livenessProbe          ProbeStats
@@ -23,41 +20,41 @@ type RuntimeState struct {
 // DisableReadinessFor starts a new timed failure window. A deadline avoids
 // background timers and ensures recovery even when no UI requests arrive.
 func (s *RuntimeState) DisableReadinessFor(duration time.Duration) {
-	s.Mu.Lock()
-	defer s.Mu.Unlock()
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	s.readinessDisabledUntil = time.Now().Add(duration)
 }
 
 func (s *RuntimeState) ReadinessDisabledUntil() time.Time {
-	s.Mu.RLock()
-	defer s.Mu.RUnlock()
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 	return s.readinessDisabledUntil
 }
 
 // LivenessDisabled reports whether liveness failures have been enabled for the demo.
 func (s *RuntimeState) LivenessDisabled() bool {
-	s.Mu.RLock()
-	defer s.Mu.RUnlock()
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 	return s.livenessDisabled
 }
 
 func (s *RuntimeState) SetLivenessDisabled(disabled bool) {
-	s.Mu.Lock()
-	defer s.Mu.Unlock()
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	s.livenessDisabled = disabled
 }
 
 // LastCertRenewDate returns zero until a certificate renewal has been observed.
 func (s *RuntimeState) LastCertRenewDate() time.Time {
-	s.Mu.RLock()
-	defer s.Mu.RUnlock()
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 	return s.lastCertRenewDate
 }
 
 // SetLastCertRenewDate records a successful renewal safely alongside status reads.
 func (s *RuntimeState) SetLastCertRenewDate(date time.Time) {
-	s.Mu.Lock()
-	defer s.Mu.Unlock()
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	s.lastCertRenewDate = date.UTC()
 }
 
@@ -89,38 +86,38 @@ func (p *ProbeStats) record(success bool) {
 }
 
 func (s *RuntimeState) RecordStartupProbe(success bool) {
-	s.Mu.Lock()
-	defer s.Mu.Unlock()
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	s.startupProbe.record(success)
 }
 
 func (s *RuntimeState) StartupProbeStats() ProbeStats {
-	s.Mu.RLock()
-	defer s.Mu.RUnlock()
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 	return s.startupProbe
 }
 
 func (s *RuntimeState) RecordLivenessProbe(success bool) {
-	s.Mu.Lock()
-	defer s.Mu.Unlock()
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	s.livenessProbe.record(success)
 }
 
 func (s *RuntimeState) LivenessProbeStats() ProbeStats {
-	s.Mu.RLock()
-	defer s.Mu.RUnlock()
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 	return s.livenessProbe
 }
 
 func (s *RuntimeState) RecordReadinessProbe(success bool) {
-	s.Mu.Lock()
-	defer s.Mu.Unlock()
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	s.readinessProbe.record(success)
 }
 
 func (s *RuntimeState) ReadinessProbeStats() ProbeStats {
-	s.Mu.RLock()
-	defer s.Mu.RUnlock()
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 	return s.readinessProbe
 }
 

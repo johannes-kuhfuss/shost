@@ -28,6 +28,7 @@
                             </tr>
                             <tr><th scope="row">Valid From (UTC)</th><td>{{ .notBefore }}</td></tr>
                             <tr><th scope="row">Expires At (UTC)</th><td>{{ .notAfter }}</td></tr>
+                            <tr><th scope="row">Last Renewed (UTC)</th><td>{{ .lastRenewed }}</td></tr>
                             <tr><th scope="row">SHA-256 Fingerprint</th><td class="text-break"><code>{{ .certificate.SHA256Fingerprint }}</code></td></tr>
                         </tbody>
                     </table>

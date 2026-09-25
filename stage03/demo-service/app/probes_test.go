@@ -16,7 +16,7 @@ import (
 func TestTimedReadinessControl(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		a := newTestApplication(t)
-		router := a.state.Runtime.Router
+		router := a.router
 		post := func(seconds string) *httptest.ResponseRecorder {
 			req := httptest.NewRequest(http.MethodPost, "/probes/readiness", strings.NewReader("seconds="+seconds))
 			req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
@@ -66,12 +66,14 @@ func TestLivenessControl(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	a := &Application{state: appstate.New()}
 	a.cfg.Gin.TemplatePath = "../templates"
-	a.initRouter()
-	a.statsUiHandler = handlers.NewStatsUiHandlerWithState(&a.cfg, a.state)
+	if err := a.initRouter(); err != nil {
+		t.Fatal(err)
+	}
+	a.statsUiHandler = handlers.NewStatsUiHandler(&a.cfg, a.state)
 	if err := a.mapUrls(); err != nil {
 		t.Fatal(err)
 	}
-	router := a.state.Runtime.Router
+	router := a.router
 	wantSuccess, wantFailure := 0, 0
 	for _, step := range []struct {
 		action     string
@@ -135,7 +137,7 @@ func TestProbeRequestsUpdateState(t *testing.T) {
 	router.GET("/health/live", a.live)
 	router.GET("/health/ready", a.ready)
 	router.LoadHTMLGlob("../templates/*.tmpl")
-	ui := handlers.NewStatsUiHandlerWithState(&a.cfg, a.state)
+	ui := handlers.NewStatsUiHandler(&a.cfg, a.state)
 	router.GET("/probes", ui.ProbesPage)
 	initialPage := performRequest(router, "/probes")
 	if initialPage.Code != http.StatusOK || strings.Count(initialPage.Body.String(), "<td>N/A</td>") != 6 || strings.Count(initialPage.Body.String(), "<td>0</td>") != 9 {

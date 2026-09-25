@@ -145,6 +145,27 @@ go test -race ./...
 go vet ./...
 ```
 
+The race detector requires CGO and a C compiler. Linux runs also exercise
+projected Secret rotation by atomically replacing the `..data` symlink and
+checking the certificate served on a new TLS connection. Watcher tests wait for
+reload events rather than assuming a fixed filesystem delay.
+
+Run the Chromium readiness countdown test with Node.js and Go installed:
+
+```bash
+cd e2e
+npm ci
+npx playwright install --with-deps chromium
+npm test
+```
+
+The browser test starts its own HTTP service on `127.0.0.1:18081`, disables
+readiness, takes the browser offline, checks that the countdown completes, and
+reconnects to verify recovery. It simulates loss of Service access; it does not
+require a Kubernetes cluster. Set `DEMO_SERVICE_BINARY` to an absolute executable
+path to use a prebuilt service instead of `go run .`. CI runs this browser test
+alongside the Linux race tests.
+
 The repository workflow also validates the Kubernetes manifests, builds the
 container, and smoke-tests it as UID/GID 65532 with a read-only root filesystem.
 All test certificates are generated at test time; no reusable private key is
