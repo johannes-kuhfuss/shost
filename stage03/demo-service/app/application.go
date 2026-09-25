@@ -79,7 +79,7 @@ func (a *Application) Start(ctx context.Context) error {
 
 		go func() {
 			defer close(watcherDone)
-			if err := a.certificateStore.WatchCertFolder(appCtx); err != nil {
+			if err := a.certificateStore.WatchCertFolder(appCtx, a.state.Runtime.SetLastCertRenewDate); err != nil {
 				watcherErrors <- err
 			}
 		}()

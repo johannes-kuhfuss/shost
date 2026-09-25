@@ -107,11 +107,13 @@ func (s *CertificateStore) GetCertificate(_ *tls.ClientHelloInfo) (*tls.Certific
 	return &snapshot.certificate, nil
 }
 
-func (s *CertificateStore) WatchCertFolder(ctx context.Context) error {
-	return s.watchCertFolder(ctx, 500*time.Millisecond, nil)
+// WatchCertFolder calls onRenewed after successfully loading a changed certificate.
+// The callback runs synchronously in the watcher goroutine and may be nil.
+func (s *CertificateStore) WatchCertFolder(ctx context.Context, onRenewed func(time.Time)) error {
+	return s.watchCertFolder(ctx, 500*time.Millisecond, nil, onRenewed)
 }
 
-func (s *CertificateStore) watchCertFolder(ctx context.Context, debounceDuration time.Duration, ready chan<- struct{}) error {
+func (s *CertificateStore) watchCertFolder(ctx context.Context, debounceDuration time.Duration, ready chan<- struct{}, onRenewed func(time.Time)) error {
 	var (
 		debounceTimer *time.Timer
 		debounceC     <-chan time.Time
@@ -184,6 +186,9 @@ func (s *CertificateStore) watchCertFolder(ctx context.Context, debounceDuration
 				continue
 			}
 			newInfo := s.Info()
+			if oldInfo != nil && certificateFingerprint(oldInfo) != certificateFingerprint(newInfo) && onRenewed != nil {
+				onRenewed(time.Now().UTC())
+			}
 			s.log.InfoContext(ctx,
 				"TLS certificate reloaded",
 				"certificate.previous_fingerprint", certificateFingerprint(oldInfo),

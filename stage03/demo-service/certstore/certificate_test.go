@@ -8,6 +8,7 @@ import (
 	"crypto/sha256"
 	"crypto/x509"
 	"crypto/x509/pkix"
+	"demo-service/appstate"
 	"encoding/pem"
 	"fmt"
 	"log/slog"
@@ -131,7 +132,7 @@ func TestWatchCertFolderReloadsCertificateAndStopsWithContext(t *testing.T) {
 	ready := make(chan struct{})
 	result := make(chan error, 1)
 	go func() {
-		result <- store.watchCertFolder(ctx, 50*time.Millisecond, ready)
+		result <- store.watchCertFolder(ctx, 50*time.Millisecond, ready, nil)
 	}()
 
 	waitForSignal(t, ready, "certificate watcher to start")
@@ -156,6 +157,7 @@ func TestWatcherKeepsOldCertificateDuringInvalidRotationAndRecovers(t *testing.T
 	keyFile := filepath.Join(directory, "tls.key")
 	firstPair := generateCertificatePair(t, 1)
 	secondPair := generateCertificatePair(t, 2)
+	state := appstate.New()
 	writeCertificatePair(t, certFile, keyFile, firstPair)
 
 	store := New(certFile, keyFile, slog.Default())
@@ -167,8 +169,16 @@ func TestWatcherKeepsOldCertificateDuringInvalidRotationAndRecovers(t *testing.T
 	ctx, cancel := context.WithCancel(context.Background())
 	ready := make(chan struct{})
 	result := make(chan error, 1)
-	go func() { result <- store.watchCertFolder(ctx, 30*time.Millisecond, ready) }()
+	defer cancel()
+	go func() {
+		result <- store.watchCertFolder(ctx, 30*time.Millisecond, ready, state.Runtime.SetLastCertRenewDate)
+	}()
 	waitForSignal(t, ready, "certificate watcher to start")
+	writeCertificatePair(t, certFile, keyFile, firstPair)
+	time.Sleep(100 * time.Millisecond)
+	if !state.Runtime.LastCertRenewDate().IsZero() {
+		t.Fatal("unchanged certificate recorded as renewed")
+	}
 
 	if err := os.WriteFile(certFile, secondPair.certPEM, 0o600); err != nil {
 		t.Fatal(err)
@@ -177,7 +187,11 @@ func TestWatcherKeepsOldCertificateDuringInvalidRotationAndRecovers(t *testing.T
 	if got := store.Info().SHA256Fingerprint; got != initialFingerprint {
 		t.Fatalf("invalid intermediate rotation replaced certificate: got %q, want %q", got, initialFingerprint)
 	}
+	if !state.Runtime.LastCertRenewDate().IsZero() {
+		t.Fatal("failed reload recorded as renewed")
+	}
 
+	renewalStarted := time.Now().UTC()
 	if err := os.WriteFile(keyFile, secondPair.keyPEM, 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -185,6 +199,9 @@ func TestWatcherKeepsOldCertificateDuringInvalidRotationAndRecovers(t *testing.T
 	cancel()
 	if err := waitForWatcherResult(t, result); err != nil {
 		t.Fatalf("watcher returned an error after recovery: %v", err)
+	}
+	if got := state.Runtime.LastCertRenewDate(); got.Before(renewalStarted) || got.After(time.Now().UTC()) {
+		t.Fatalf("renewal date = %v, want time of successful rotation", got)
 	}
 }
 

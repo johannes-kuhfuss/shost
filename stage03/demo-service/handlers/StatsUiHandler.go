@@ -58,7 +58,7 @@ func (uh *StatsUiHandler) getState() dto.State {
 	currentState.CertFile = uh.Cfg.Server.CertFile
 	currentState.KeyFile = uh.Cfg.Server.KeyFile
 	currentState.ServiceStartDate = formatDate(uh.State.Runtime.StartDateDate)
-	currentState.LastCertRenewDate = formatDate(uh.State.Runtime.LastCertRenewDate)
+	currentState.LastCertRenewDate = formatDate(uh.State.Runtime.LastCertRenewDate())
 
 	return currentState
 }
