@@ -7,9 +7,10 @@ import (
 )
 
 type RuntimeState struct {
-	Router     *gin.Engine
-	ListenAddr string
-	StartDate  time.Time
+	Router            *gin.Engine
+	ListenAddr        string
+	StartDateDate     time.Time
+	LastCertRenewDate time.Time
 }
 
 type AppState struct {

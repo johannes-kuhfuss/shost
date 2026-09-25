@@ -15,175 +15,40 @@
                     </thead>
                     <tbody>
                         <tr>
-                          <td>Root Folder for crawl</td>
-                          <td>{{ .configdata.RootFolder }}</td>
+                          <td>Server listening on</td>
+                          <td>{{ .configdata.ListeningAddr }}</td>
                         </tr>
                         <tr>
-                          <td>File Extensions</td>
-                          <td><strong>Scan: </strong>{{ .configdata.FileExtensions }} - <strong>Audio: </strong>{{ .configdata.AudioFileExtensions }} - <strong>Stream: </strong>{{ .configdata.StreamFileExtensions }}</td>
+                          <td>Configured TLS Port</td>
+                          <td>{{ .configdata.TlsPort }}</td>
                         </tr>
                         <tr>
-                          <td>Stream Mappings</td>
-                          <td>{{ .configdata.StreamFileMapping }}</td>
+                          <td>Configured Shutdown Time</td>
+                          <td>{{ .configdata.GracefulShutdownTime }}</td>
                         </tr>
                         <tr>
-                          <td>Crawl Cycle in minutes</td>
-                          <td>{{ .configdata.CycleTime }}</td>
+                          <td>Configured Pod Drain Time</td>
+                          <td>{{ .configdata.DrainRequestTime }}</td>
                         </tr>
                         <tr>
-                          <td>Playlist Export Folder</td>
-                          <td>{{ .configdata.ExportFolder }}</td>
+                          <td>Configured to use TLS</td>
+                          <td>{{ .configdata.UseTls }}</td>
                         </tr>
                         <tr>
-                          <td>Export to mAirList at which minute of the hour</td>
-                          <td>{{ .configdata.ExportMinute }}</td>
+                          <td>Certificate File</td>
+                          <td>{{ .configdata.CertFile }}</td>
                         </tr>
                         <tr>
-                          <td>Append Playlist to mAirList via API</td>
-                          <td>{{ .configdata.AppendToPlayout }}</td>
-                        </tr>
-                        <tr>
-                          <td>How many minutes short / long and still accepted?</td>
-                          <td><strong>Short: </strong>{{ .configdata.ShortAllowance }} - <strong>Long: </strong>{{ .configdata.LongAllowance }}</td>
-                        </tr>
-                        <tr>
-                          <td>Generate Hashes</td>
-                          <td>{{ .configdata.GenHashes }}</td>
-                        </tr>
-                        <tr>
-                          <td>Export files for Live Events</td>
-                          <td>{{ .configdata.ExportLiveItems }}</td>
-                        </tr>
-                        <tr>
-                          <td>Add non-calCMS files</td>
-                          <td>{{ .configdata.AddNonCalCmsFiles }}</td>
-                        </tr>
-                        <tr>
-                          <td>Log File</td>
-                          <td>{{ .configdata.LogFile }}</td>
-                        </tr>
-                        <tr>
-                          <td>Last Crawl Run</td>
-                          <td>{{ .configdata.LastCrawlDate }}</td>
-                        </tr>
-                        <tr>
-                          <td>Next Crawl Run</td>
-                          <td>{{ .configdata.NextCrawlDate }}</td>
-                        </tr>
-                        <tr>
-                          <td>Crawl runs executed</td>
-                          <td>{{ .configdata.CrawlRunNumber }}</td>
-                        </tr>
-                        <tr>
-                          <td>Last calCms Communication</td>
-                          <td>{{ .configdata.LastCalCmsState }}</td>
-                        </tr>
-                        <tr>
-                          <td>Last calCMS Event Refresh</td>
-                          <td>{{ .configdata.LastCalCmsRefreshDate }}</td>
-                        </tr>
-                        <tr>
-                          <td>Last calCMS Event Refresh Error</td>
-                          <td>{{ .configdata.LastCalCmsRefreshError }}</td>
-                        </tr>
-                        <tr>
-                          <td>Export calCms Events for each day</td>
-                          <td>{{ .configdata.ExportDayEvents }}</td>
-                        </tr>
-                        <tr>
-                          <td>Last Export Run</td>
-                          <td>{{ .configdata.LastExportDate }}</td>
-                        </tr>
-                        <tr>
-                          <td>Next Export Run</td>
-                          <td>{{ .configdata.NextExportDate }}</td>
-                        </tr>
-                        <tr>
-                          <td>Last file exported</td>
-                          <td>{{ .configdata.LastExportFileName }}</td>
-                        </tr>
-                        <tr>
-                          <td>Last file export date</td>
-                          <td>{{ .configdata.LastExportedFileDate }}</td>
-                        </tr>
-                        <tr>
-                          <td>Last mAirList Communication</td>
-                          <td>{{ .configdata.LastMairListCommState }}</td>
-                        </tr>
-                        <tr>
-                          <td>mAirList Currently Playing</td>
-                          <td>{{ .configdata.MairListPlayingState }}</td>
-                        </tr>
-                        <tr>
-                          <td>Last Clean Run</td>
-                          <td>{{ .configdata.LastCleanDate }}</td>
-                        </tr>
-                        <tr>
-                          <td>Next Clean Run</td>
-                          <td>{{ .configdata.NextCleanDate }}</td>
-                        </tr>
-                        <tr>
-                          <td>Number of files removed during last clean run</td>
-                          <td>{{ .configdata.FilesCleaned }}</td>
-                        </tr>
-                        <tr>
-                          <td>Crawl process currently running</td>
-                          <td>{{ .configdata.CrawlRunning }}</td>
-                        </tr>
-                        <tr>
-                          <td>Export process currently running</td>
-                          <td>{{ .configdata.ExportRunning }}</td>
-                        </tr>
-                        <tr>
-                          <td>Clean-up process currently running</td>
-                          <td>{{ .configdata.CleanRunning }}</td>
+                          <td>Key File</td>
+                          <td>{{ .configdata.KeyFile }}</td>
                         </tr>
                         <tr>
                           <td>Service Start Date</td>
-                          <td>{{ .configdata.StartDate }}</td>
-                        </tr>
-                    </tbody>
-                </table>
-                <h3>Server</h3>
-                <table class="table table-striped table-sm">
-                    <thead>
-                        <tr>
-                        <th scope="col" style="width: 35%">Variable</th>
-                        <th scope="col" style="width: 65%">Value</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <tr>
-                            <td>Host</td>
-                            <td>{{ .configdata.ServerHost }}</td>
+                          <td>{{ .configdata.ServiceStartDate }}</td>
                         </tr>
                         <tr>
-                            <td>Port</td>
-                            <td>{{ .configdata.ServerPort }}</td>
-                        </tr>
-                        <tr>
-                            <td>TLS Port</td>
-                            <td>{{ .configdata.ServerTLSPort }}</td>
-                        </tr>
-                        <tr>
-                            <td>Graceful Shutdown Time</td>
-                            <td>{{ .configdata.ServerGracefulShutdownTime }}</td>
-                        </tr>
-                        <tr>
-                            <td>Use TLS</td>
-                            <td>{{ .configdata.ServerUseTLS }}</td>
-                        </tr>
-                        <tr>
-                            <td>Certificate File</td>
-                            <td>{{ .configdata.ServerCertFile }}</td>
-                        </tr>
-                        <tr>
-                            <td>Key File</td>
-                            <td>{{ .configdata.ServerKeyFile }}</td>
-                        </tr>
-                        <tr>
-                            <td>Gin-Gonic Mode</td>
-                            <td>{{ .configdata.GinMode }}</td>
+                          <td>Certificate Last Renewed Date</td>
+                          <td>{{ .configdata.LastCertRenewDate }}</td>
                         </tr>
                     </tbody>
                 </table>

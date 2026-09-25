@@ -271,7 +271,7 @@ func (a *Application) startServer() error {
 		err error
 	)
 	a.logger().Info("Listening", "server.address", a.state.Runtime.ListenAddr)
-	a.state.Runtime.StartDate = time.Now().UTC()
+	a.state.Runtime.StartDateDate = time.Now().UTC()
 	if a.cfg.Server.UseTLS {
 		err = a.server.ListenAndServeTLS("", "")
 	} else {

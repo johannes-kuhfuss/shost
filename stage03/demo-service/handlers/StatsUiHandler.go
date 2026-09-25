@@ -5,7 +5,10 @@ import (
 	"context"
 	"demo-service/appconfig"
 	"demo-service/appstate"
+	"demo-service/dto"
 	"net/http"
+	"strconv"
+	"time"
 
 	"github.com/gin-gonic/gin"
 )
@@ -28,7 +31,7 @@ func NewStatsUiHandlerWithContext(ctx context.Context, cfg *appconfig.AppConfig,
 
 // StatusPage is the handler for the status page
 func (uh *StatsUiHandler) StatusPage(c *gin.Context) {
-	configData := ""
+	configData := uh.getState()
 	c.HTML(http.StatusOK, "status.page.tmpl", gin.H{
 		"title":      "Status",
 		"configdata": configData,
@@ -41,4 +44,29 @@ func (uh *StatsUiHandler) AboutPage(c *gin.Context) {
 		"title": "About",
 		"data":  nil,
 	})
+}
+
+func (uh *StatsUiHandler) getState() dto.State {
+	var (
+		currentState dto.State
+	)
+	currentState.ListeningAddr = uh.State.Runtime.ListenAddr
+	currentState.TlsPort = uh.Cfg.Server.TLSPort
+	currentState.GracefulShutdownTime = strconv.FormatInt(int64(uh.Cfg.Server.GracefulShutdownTime), 10)
+	currentState.DrainRequestTime = strconv.FormatInt(int64(uh.Cfg.Server.DrainRequestsTime), 10)
+	currentState.UseTls = strconv.FormatBool(uh.Cfg.Server.UseTLS)
+	currentState.CertFile = uh.Cfg.Server.CertFile
+	currentState.KeyFile = uh.Cfg.Server.KeyFile
+	currentState.ServiceStartDate = formatDate(uh.State.Runtime.StartDateDate)
+	currentState.LastCertRenewDate = formatDate(uh.State.Runtime.LastCertRenewDate)
+
+	return currentState
+}
+
+func formatDate(d time.Time) string {
+	if d.IsZero() {
+		return "N/A"
+	} else {
+		return d.Format(time.RFC3339)
+	}
 }
