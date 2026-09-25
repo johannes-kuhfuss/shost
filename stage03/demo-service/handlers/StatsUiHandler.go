@@ -38,6 +38,29 @@ func (uh *StatsUiHandler) StatusPage(c *gin.Context) {
 	})
 }
 
+// ProbesPage displays the latest probe statistics using thread-safe snapshots.
+func (uh *StatsUiHandler) ProbesPage(c *gin.Context) {
+	probes := make([]dto.ProbeStatus, 0, 3)
+	for _, probe := range []struct {
+		name  string
+		stats appstate.ProbeStats
+	}{
+		{"Startup", uh.State.Runtime.StartupProbeStats()},
+		{"Liveness", uh.State.Runtime.LivenessProbeStats()},
+		{"Readiness", uh.State.Runtime.ReadinessProbeStats()},
+	} {
+		probes = append(probes, dto.ProbeStatus{
+			Name:          probe.name,
+			Count:         probe.stats.Count,
+			LastProbeDate: formatDate(probe.stats.LastProbeDate),
+		})
+	}
+	c.HTML(http.StatusOK, "probes.page.tmpl", gin.H{
+		"title":  "Probe Status",
+		"probes": probes,
+	})
+}
+
 // AboutPage is the handler for the page displaying a short description of the program and its license
 func (uh *StatsUiHandler) AboutPage(c *gin.Context) {
 	c.HTML(http.StatusOK, "about.page.tmpl", gin.H{
