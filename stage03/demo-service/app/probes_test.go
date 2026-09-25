@@ -7,10 +7,60 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/gin-gonic/gin"
 )
+
+func TestTimedReadinessControl(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		a := newTestApplication(t)
+		router := a.state.Runtime.Router
+		post := func(seconds string) *httptest.ResponseRecorder {
+			req := httptest.NewRequest(http.MethodPost, "/probes/readiness", strings.NewReader("seconds="+seconds))
+			req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+			response := httptest.NewRecorder()
+			router.ServeHTTP(response, req)
+			return response
+		}
+		for _, invalid := range []string{"", "0", "-1", "3601", "1.5", "abc", "999999999999999999999"} {
+			if response := post(invalid); response.Code != http.StatusBadRequest || !a.state.Runtime.ReadinessDisabledUntil().IsZero() {
+				t.Fatalf("invalid duration %q changed readiness or returned %d", invalid, response.Code)
+			}
+		}
+		response := post("10")
+		if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), "10 seconds remaining") || response.Header().Get("Location") != "" {
+			t.Fatalf("missing direct countdown confirmation: %d %s", response.Code, response.Body.String())
+		}
+		if got := performRequest(router, "/health/ready"); got.Code != http.StatusServiceUnavailable {
+			t.Fatal("readiness should fail during pause")
+		}
+		if got := performRequest(router, "/health/live"); got.Code != http.StatusOK {
+			t.Fatal("readiness pause affected liveness")
+		}
+		time.Sleep(5 * time.Second)
+		post("10") // A new pause replaces the previous deadline.
+		time.Sleep(5 * time.Second)
+		if got := performRequest(router, "/health/ready"); got.Code != http.StatusServiceUnavailable {
+			t.Fatal("previous deadline ended the replacement pause")
+		}
+		time.Sleep(5 * time.Second)
+		if got := performRequest(router, "/health/ready"); got.Code != http.StatusOK {
+			t.Fatal("readiness did not recover without UI requests")
+		}
+		stats := a.state.Runtime.ReadinessProbeStats()
+		if stats.SuccessCount != 1 || stats.FailureCount != 2 {
+			t.Fatalf("incorrect readiness counters: %+v", stats)
+		}
+		post("1")
+		a.shuttingDown.Store(true)
+		time.Sleep(time.Second)
+		if got := performRequest(router, "/health/ready"); got.Code != http.StatusServiceUnavailable || !strings.Contains(got.Body.String(), "shutting down") {
+			t.Fatal("timer expiration overrode shutdown readiness")
+		}
+	})
+}
 
 func TestLivenessControl(t *testing.T) {
 	gin.SetMode(gin.TestMode)
@@ -59,7 +109,7 @@ func TestLivenessControl(t *testing.T) {
 			wantSuccess++
 		}
 		stats := a.state.Runtime.LivenessProbeStats()
-		if live.Code != wantLive || stats.Count != before+1 || stats.SuccessCount != wantSuccess || stats.FailureCount != wantFailure || stats.LastProbeDate.Before(started) {
+		if live.Code != wantLive || stats.LastProbeSuccessful == step.disabled || stats.Count != before+1 || stats.SuccessCount != wantSuccess || stats.FailureCount != wantFailure || stats.LastProbeDate.Before(started) {
 			t.Fatalf("action %q: liveness status %d, stats %+v", step.action, live.Code, stats)
 		}
 		page := performRequest(router, "/probes")
@@ -88,7 +138,7 @@ func TestProbeRequestsUpdateState(t *testing.T) {
 	ui := handlers.NewStatsUiHandlerWithState(&a.cfg, a.state)
 	router.GET("/probes", ui.ProbesPage)
 	initialPage := performRequest(router, "/probes")
-	if initialPage.Code != http.StatusOK || strings.Count(initialPage.Body.String(), "<td>N/A</td>") != 3 || strings.Count(initialPage.Body.String(), "<td>0</td>") != 9 {
+	if initialPage.Code != http.StatusOK || strings.Count(initialPage.Body.String(), "<td>N/A</td>") != 6 || strings.Count(initialPage.Body.String(), "<td>0</td>") != 9 {
 		t.Fatalf("initial probe page = %d: %s", initialPage.Code, initialPage.Body.String())
 	}
 
@@ -114,12 +164,15 @@ func TestProbeRequestsUpdateState(t *testing.T) {
 	started := time.Now().UTC()
 	response := performRequest(router, "/health/ready")
 	got := a.state.Runtime.ReadinessProbeStats()
-	if response.Code != http.StatusServiceUnavailable || got.Count != 3 || got.SuccessCount != 2 || got.FailureCount != 1 || got.LastProbeDate.Before(started) {
+	if response.Code != http.StatusServiceUnavailable || got.LastProbeSuccessful || got.Count != 3 || got.SuccessCount != 2 || got.FailureCount != 1 || got.LastProbeDate.Before(started) {
 		t.Fatalf("readiness during shutdown: status %d, stats %+v", response.Code, got)
 	}
 	page := performRequest(router, "/probes")
 	if page.Code != http.StatusOK {
 		t.Fatalf("probe page status = %d", page.Code)
+	}
+	if strings.Count(page.Body.String(), "<td>Successful</td>") != 2 || strings.Count(page.Body.String(), "<td>Failed</td>") != 1 {
+		t.Fatal("probe page should show two successful last probes and one failed last probe")
 	}
 	for _, want := range []string{"Startup", "Liveness", "Readiness", "Successful", "Failed", `href="/probes"`, "<td>3</td>", "<td>1</td>", got.LastProbeDate.Format(time.RFC3339)} {
 		if !strings.Contains(page.Body.String(), want) {

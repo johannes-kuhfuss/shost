@@ -7,6 +7,23 @@
             <div class="col">
                 <h3>Probe Status</h3>
                 <div class="mb-3">
+                    <p>Readiness simulation: <strong>{{ if .readinessDisabled }}Temporarily disabled (HTTP 503){{ else }}Enabled{{ end }}</strong></p>
+                    <p>Disabling readiness removes this pod from service traffic after Kubernetes detects the failures. Recovery is automatic; keep this page open to see the countdown. Routing may take a few additional seconds to recover after readiness is restored.</p>
+                    {{ if .readinessDisabled }}
+                    <div class="alert alert-info" role="status">
+                        Readiness will be enabled at {{ .readinessUntil }}.
+                        <span id="readiness-countdown" data-remaining-ms="{{ .readinessRemainingMS }}">{{ .readinessRemainingSeconds }} seconds remaining.</span>
+                        <a href="/probes">Refresh probe status</a>
+                    </div>
+                    {{ else }}
+                    <form method="post" action="/probes/readiness">
+                        <label for="readiness-seconds" class="form-label">Disable readiness for (seconds)</label>
+                        <input id="readiness-seconds" class="form-control mb-2" style="max-width: 12rem" type="number" name="seconds" min="1" max="3600" step="1" value="60" required>
+                        <button class="btn btn-warning" type="submit">Temporarily disable readiness</button>
+                    </form>
+                    {{ end }}
+                </div>
+                <div class="mb-3">
                     <p>Liveness: <strong>{{ if .livenessDisabled }}Disabled (HTTP 503){{ else }}Enabled (HTTP 200){{ end }}</strong></p>
                     <p>Disabling liveness intentionally causes Kubernetes to restart this container after its configured failure threshold. Liveness is enabled again when the application restarts.</p>
                     <form method="post" action="/probes/liveness">
@@ -24,6 +41,7 @@
                             <tr>
                                 <th scope="col">Probe</th>
                                 <th scope="col">Last Probe Date (UTC)</th>
+                                <th scope="col">Last Probe Status</th>
                                 <th scope="col">Probe Count</th>
                                 <th scope="col">Successful</th>
                                 <th scope="col">Failed</th>
@@ -34,6 +52,7 @@
                             <tr>
                                 <th scope="row">{{ .Name }}</th>
                                 <td>{{ .LastProbeDate }}</td>
+                                <td>{{ .LastProbeStatus }}</td>
                                 <td>{{ .Count }}</td>
                                 <td>{{ .SuccessCount }}</td>
                                 <td>{{ .FailureCount }}</td>
@@ -45,6 +64,23 @@
             </div>
         </div>
     </div>
+
+<script>
+    (() => {
+        const countdown = document.getElementById('readiness-countdown');
+        if (!countdown) return;
+        const deadline = performance.now() + Number(countdown.dataset.remainingMs);
+        const update = () => {
+            const seconds = Math.max(0, Math.ceil((deadline - performance.now()) / 1000));
+            countdown.textContent = seconds > 0
+                ? `${seconds} seconds remaining.`
+                : 'The readiness pause has ended. Allow Kubernetes a few seconds to restore routing, then refresh. A shutting-down pod remains unready.';
+            if (seconds === 0) clearInterval(timer);
+        };
+        const timer = setInterval(update, 250);
+        update();
+    })();
+</script>
 
 {{ template "footer" .}}
 

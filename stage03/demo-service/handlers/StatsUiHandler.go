@@ -41,6 +41,12 @@ func (uh *StatsUiHandler) StatusPage(c *gin.Context) {
 
 // ProbesPage displays the latest probe statistics using thread-safe snapshots.
 func (uh *StatsUiHandler) ProbesPage(c *gin.Context) {
+	c.Header("Cache-Control", "no-store")
+	until := uh.State.Runtime.ReadinessDisabledUntil()
+	remaining := time.Until(until)
+	if remaining < 0 {
+		remaining = 0
+	}
 	probes := make([]dto.ProbeStatus, 0, 3)
 	for _, probe := range []struct {
 		name  string
@@ -50,19 +56,43 @@ func (uh *StatsUiHandler) ProbesPage(c *gin.Context) {
 		{"Liveness", uh.State.Runtime.LivenessProbeStats()},
 		{"Readiness", uh.State.Runtime.ReadinessProbeStats()},
 	} {
+		lastStatus := "N/A"
+		if probe.stats.Count > 0 {
+			lastStatus = "Failed"
+			if probe.stats.LastProbeSuccessful {
+				lastStatus = "Successful"
+			}
+		}
 		probes = append(probes, dto.ProbeStatus{
-			Name:          probe.name,
-			Count:         probe.stats.Count,
-			SuccessCount:  probe.stats.SuccessCount,
-			FailureCount:  probe.stats.FailureCount,
-			LastProbeDate: formatDate(probe.stats.LastProbeDate),
+			Name:            probe.name,
+			Count:           probe.stats.Count,
+			SuccessCount:    probe.stats.SuccessCount,
+			FailureCount:    probe.stats.FailureCount,
+			LastProbeDate:   formatDate(probe.stats.LastProbeDate),
+			LastProbeStatus: lastStatus,
 		})
 	}
 	c.HTML(http.StatusOK, "probes.page.tmpl", gin.H{
-		"title":            "Probe Status",
-		"probes":           probes,
-		"livenessDisabled": uh.State.Runtime.LivenessDisabled(),
+		"title":                     "Probe Status",
+		"probes":                    probes,
+		"livenessDisabled":          uh.State.Runtime.LivenessDisabled(),
+		"readinessDisabled":         remaining > 0,
+		"readinessUntil":            until.UTC().Format(time.RFC3339),
+		"readinessRemainingMS":      remaining.Milliseconds(),
+		"readinessRemainingSeconds": int64(remaining.Seconds() + 0.999),
 	})
+}
+
+// DisableReadiness returns the confirmation page directly, before service
+// routing is removed; recovery requires no further browser requests.
+func (uh *StatsUiHandler) DisableReadiness(c *gin.Context) {
+	seconds, err := strconv.Atoi(c.PostForm("seconds"))
+	if err != nil || seconds < 1 || seconds > 3600 {
+		c.String(http.StatusBadRequest, "Readiness duration must be a whole number from 1 to 3600 seconds")
+		return
+	}
+	uh.State.Runtime.DisableReadinessFor(time.Duration(seconds) * time.Second)
+	uh.ProbesPage(c)
 }
 
 // SetLiveness controls the in-memory liveness failure simulation.

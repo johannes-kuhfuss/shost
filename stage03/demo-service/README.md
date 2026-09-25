@@ -74,6 +74,14 @@ cert-manager.
 
 ## Configuration
 
+The `/probes` page can temporarily disable readiness for a duration entered in
+seconds (1–3600, default 60). The response includes the recovery time and a
+countdown that works while the pod is unreachable through the Service. The
+server automatically ends the pause at its deadline without another UI request.
+Kubernetes needs to observe readiness success and update routing before Service
+access returns. Shutdown still keeps the pod unready. A new pause replaces the
+previous deadline; restarting the application clears the pause.
+
 | Variable | Default | Description |
 | --- | --- | --- |
 | `POD_NAME` | empty | Pod name from the Downward API (`metadata.name`) |

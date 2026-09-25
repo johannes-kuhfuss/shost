@@ -1,9 +1,10 @@
 package dto
 
 type ProbeStatus struct {
-	Name          string
-	Count         int
-	SuccessCount  int
-	FailureCount  int
-	LastProbeDate string
+	Name            string
+	Count           int
+	SuccessCount    int
+	FailureCount    int
+	LastProbeDate   string
+	LastProbeStatus string
 }
