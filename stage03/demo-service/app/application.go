@@ -261,22 +261,24 @@ func (a *Application) live(c *gin.Context) {
 }
 
 func (a *Application) certificate(c *gin.Context) {
+	data := gin.H{"title": "Certificate"}
 	if a.certificateStore == nil {
-		c.JSON(http.StatusServiceUnavailable, gin.H{
-			"error": "TLS is disabled",
-		})
+		data["error"] = "TLS is disabled"
+		c.HTML(http.StatusServiceUnavailable, "certificate.page.tmpl", data)
 		return
 	}
 
 	info := a.certificateStore.Info()
 	if info == nil {
-		c.JSON(http.StatusServiceUnavailable, gin.H{
-			"error": "no certificate loaded",
-		})
+		data["error"] = "No certificate loaded"
+		c.HTML(http.StatusServiceUnavailable, "certificate.page.tmpl", data)
 		return
 	}
 
-	c.JSON(http.StatusOK, info)
+	data["certificate"] = info
+	data["notBefore"] = info.NotBefore.UTC().Format(time.RFC3339)
+	data["notAfter"] = info.NotAfter.UTC().Format(time.RFC3339)
+	c.HTML(http.StatusOK, "certificate.page.tmpl", data)
 }
 
 // startServer starts the preconfigured web server

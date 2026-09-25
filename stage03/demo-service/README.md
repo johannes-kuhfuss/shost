@@ -18,7 +18,7 @@ shutdown, backend TLS, and automatic certificate rotation.
 | `/health/startup` | Startup probe |
 | `/health/ready` | Readiness probe; returns 503 while draining |
 | `/health/live` | Liveness probe |
-| `/certificate` | Metadata for the current TLS certificate |
+| `/certificate` | Web page displaying the current TLS certificate's subject, issuer, serial number, DNS names, validity dates, and SHA-256 fingerprint |
 
 `/certificate` returns 503 when TLS is disabled or no certificate has been
 loaded. It never returns private-key material.

@@ -25,6 +25,7 @@ import (
 
 	"demo-service/appstate"
 	"demo-service/certstore"
+	"demo-service/handlers"
 
 	"github.com/gin-gonic/gin"
 )
@@ -57,7 +58,7 @@ func TestBasicEndpoints(t *testing.T) {
 		path string
 		body string
 	}{
-		{path: "/", body: `{"ping":"pong"}`},
+		{path: "/ping", body: `{"ping":"pong"}`},
 		{path: "/health/startup", body: `{"endpoint":"startup probe","status":"ok"}`},
 		{path: "/health/live", body: `{"endpoint":"live probe","status":"ok"}`},
 	}
@@ -92,7 +93,7 @@ func TestCertificateEndpointWhenTLSIsDisabled(t *testing.T) {
 	if response.Code != http.StatusServiceUnavailable {
 		t.Fatalf("status = %d, want %d", response.Code, http.StatusServiceUnavailable)
 	}
-	if got := strings.TrimSpace(response.Body.String()); got != `{"error":"TLS is disabled"}` {
+	if got := response.Body.String(); !strings.Contains(got, "TLS is disabled") || !strings.HasPrefix(response.Header().Get("Content-Type"), "text/html") {
 		t.Fatalf("body = %q, want TLS-disabled error", got)
 	}
 }
@@ -104,7 +105,7 @@ func TestCertificateEndpointWhenCertificateIsNotLoaded(t *testing.T) {
 	if response.Code != http.StatusServiceUnavailable {
 		t.Fatalf("status = %d, want %d", response.Code, http.StatusServiceUnavailable)
 	}
-	if got := strings.TrimSpace(response.Body.String()); got != `{"error":"no certificate loaded"}` {
+	if got := response.Body.String(); !strings.Contains(got, "No certificate loaded") || !strings.HasPrefix(response.Header().Get("Content-Type"), "text/html") {
 		t.Fatalf("body = %q, want no-certificate error", got)
 	}
 }
@@ -124,9 +125,14 @@ func TestCertificateEndpointReturnsLoadedMetadata(t *testing.T) {
 	if response.Code != http.StatusOK {
 		t.Fatalf("status = %d, want %d", response.Code, http.StatusOK)
 	}
-	if !strings.Contains(response.Body.String(), `"subject":"demo-service"`) ||
-		!strings.Contains(response.Body.String(), `"serialNumber":"7"`) {
-		t.Fatalf("body = %q, want certificate metadata", response.Body.String())
+	if !strings.HasPrefix(response.Header().Get("Content-Type"), "text/html") {
+		t.Fatal("certificate page should return HTML")
+	}
+	info := application.certificateStore.Info()
+	for _, want := range []string{"<td>demo-service</td>", `<td class="text-break">7</td>`, "DNS Names", "N/A", info.SHA256Fingerprint, info.NotBefore.UTC().Format(time.RFC3339), info.NotAfter.UTC().Format(time.RFC3339), `href="/certificate"`} {
+		if !strings.Contains(response.Body.String(), want) {
+			t.Errorf("certificate page missing %q", want)
+		}
 	}
 }
 
@@ -330,8 +336,10 @@ func newTestApplication(t *testing.T) *Application {
 	gin.SetMode(gin.TestMode)
 
 	application := &Application{state: appstate.New()}
+	application.cfg.Gin.TemplatePath = "../templates"
 	application.initRouter()
 	application.initServer()
+	application.statsUiHandler = handlers.NewStatsUiHandlerWithState(&application.cfg, application.state)
 	if err := application.mapUrls(); err != nil {
 		t.Fatalf("mapUrls() error = %v", err)
 	}
