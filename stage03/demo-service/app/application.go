@@ -6,12 +6,15 @@ import (
 	"demo-service/appconfig"
 	"demo-service/appstate"
 	"demo-service/certstore"
+	"demo-service/handlers"
 	"demo-service/logging"
 	"errors"
 	"fmt"
+	"io/fs"
 	"log/slog"
 	"net/http"
 	"os"
+	"path/filepath"
 	"sync/atomic"
 	"time"
 
@@ -25,6 +28,7 @@ type Application struct {
 	server           http.Server
 	certificateStore *certstore.CertificateStore
 	shuttingDown     atomic.Bool
+	statsUiHandler   handlers.StatsUiHandler
 }
 
 func StartApp(ctx context.Context) error {
@@ -55,6 +59,7 @@ func (a *Application) Start(ctx context.Context) error {
 	}
 	a.initRouter()
 	a.initServer()
+	a.statsUiHandler = handlers.NewStatsUiHandlerWithContext(ctx, &a.cfg, a.state)
 	if err := a.mapUrls(); err != nil {
 		return err
 	}
@@ -154,8 +159,8 @@ func (a *Application) initRouter() {
 	router.Use(requestLogger(a.logger()))
 	router.Use(recoveryLogger(a.logger()))
 	router.SetTrustedProxies(nil)
-	//globPath := filepath.Join(a.cfg.Gin.TemplatePath, "*.tmpl")
-	//router.LoadHTMLGlob(globPath)
+	globPath := filepath.Join(a.cfg.Gin.TemplatePath, "*.tmpl")
+	router.LoadHTMLGlob(globPath)
 
 	a.state.Runtime.Router = router
 }
@@ -198,11 +203,18 @@ func (a *Application) initServer() {
 
 // mapUrls defines the handlers for the available URLs
 func (a *Application) mapUrls() error {
-	a.state.Runtime.Router.GET("/", a.pong)
+	staticRoot, err := fs.Sub(staticFiles, "static")
+	if err != nil {
+		return err
+	}
+	a.state.Runtime.Router.StaticFS("/static", http.FS(staticRoot))
+	a.state.Runtime.Router.GET("/", a.statsUiHandler.StatusPage)
+	a.state.Runtime.Router.GET("/ping", a.pong)
 	a.state.Runtime.Router.GET("/health/startup", a.startup)
 	a.state.Runtime.Router.GET("/health/ready", a.ready)
 	a.state.Runtime.Router.GET("/health/live", a.live)
 	a.state.Runtime.Router.GET("/certificate", a.certificate)
+	a.state.Runtime.Router.GET("/about", a.statsUiHandler.AboutPage)
 	return nil
 }
 
