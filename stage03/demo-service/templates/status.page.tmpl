@@ -15,6 +15,22 @@
                     </thead>
                     <tbody>
                         <tr>
+                          <td>Pod Name</td>
+                          <td>{{ or .configdata.PodName "N/A" }}</td>
+                        </tr>
+                        <tr>
+                          <td>Pod IP</td>
+                          <td>{{ or .configdata.PodIP "N/A" }}</td>
+                        </tr>
+                        <tr>
+                          <td>Pod Namespace</td>
+                          <td>{{ or .configdata.PodNamespace "N/A" }}</td>
+                        </tr>
+                        <tr>
+                          <td>Node Name</td>
+                          <td>{{ or .configdata.NodeName "N/A" }}</td>
+                        </tr>
+                        <tr>
                           <td>Server listening on</td>
                           <td>{{ .configdata.ListeningAddr }}</td>
                         </tr>

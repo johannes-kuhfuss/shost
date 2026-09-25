@@ -8,6 +8,10 @@ import (
 )
 
 var configEnvironment = []string{
+	"POD_NAME",
+	"POD_IP",
+	"POD_NAMESPACE",
+	"NODE_NAME",
 	"SERVER_HOST",
 	"SERVER_PORT",
 	"SERVER_TLS_PORT",

@@ -76,6 +76,10 @@ cert-manager.
 
 | Variable | Default | Description |
 | --- | --- | --- |
+| `POD_NAME` | empty | Pod name from the Downward API (`metadata.name`) |
+| `POD_IP` | empty | Pod IP from the Downward API (`status.podIP`) |
+| `POD_NAMESPACE` | empty | Pod namespace from the Downward API (`metadata.namespace`) |
+| `NODE_NAME` | empty | Node name from the Downward API (`spec.nodeName`) |
 | `SERVER_HOST` | empty (all interfaces) | Listen address |
 | `SERVER_PORT` | `8080` | Plain HTTP port |
 | `SERVER_TLS_PORT` | `8443` | HTTPS port |
@@ -91,6 +95,10 @@ cert-manager.
 
 An optional `.env` file can provide the same values. Existing process
 environment variables take precedence.
+
+The deployment injects the four Kubernetes fields through Downward API environment
+variables. The status page displays them, or `N/A` when they are unset (for example,
+when running locally). Values are read at application startup.
 
 ## Logging
 

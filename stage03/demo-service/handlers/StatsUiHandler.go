@@ -91,6 +91,10 @@ func (uh *StatsUiHandler) getState() dto.State {
 		currentState dto.State
 	)
 	currentState.ListeningAddr = uh.State.Runtime.ListenAddr
+	currentState.PodName = uh.Cfg.Kubernetes.PodName
+	currentState.PodIP = uh.Cfg.Kubernetes.PodIP
+	currentState.PodNamespace = uh.Cfg.Kubernetes.PodNamespace
+	currentState.NodeName = uh.Cfg.Kubernetes.NodeName
 	currentState.TlsPort = uh.Cfg.Server.TLSPort
 	currentState.GracefulShutdownTime = strconv.FormatInt(int64(uh.Cfg.Server.GracefulShutdownTime), 10)
 	currentState.DrainRequestTime = strconv.FormatInt(int64(uh.Cfg.Server.DrainRequestsTime), 10)

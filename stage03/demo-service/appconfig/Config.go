@@ -14,6 +14,12 @@ import (
 )
 
 type AppConfig struct {
+	Kubernetes struct {
+		PodName      string `envconfig:"POD_NAME"`
+		PodIP        string `envconfig:"POD_IP"`
+		PodNamespace string `envconfig:"POD_NAMESPACE"`
+		NodeName     string `envconfig:"NODE_NAME"`
+	}
 	Logging struct {
 		Format string `envconfig:"LOG_FORMAT" default:"text"`
 		Level  string `envconfig:"LOG_LEVEL" default:"info"`

@@ -10,6 +10,7 @@ import (
 	"crypto/x509/pkix"
 	"encoding/pem"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"math/big"
@@ -23,12 +24,45 @@ import (
 	"testing"
 	"time"
 
+	"demo-service/appconfig"
 	"demo-service/appstate"
 	"demo-service/certstore"
 	"demo-service/handlers"
 
 	"github.com/gin-gonic/gin"
 )
+
+func TestStatusPageDisplaysKubernetesMetadata(t *testing.T) {
+	for _, populated := range []bool{false, true} {
+		t.Run(fmt.Sprint(populated), func(t *testing.T) {
+			values := map[string]string{"POD_NAME": "", "POD_IP": "", "POD_NAMESPACE": "", "NODE_NAME": ""}
+			if populated {
+				values = map[string]string{"POD_NAME": "demo-service-abc", "POD_IP": "10.42.1.5", "POD_NAMESPACE": "demo-service", "NODE_NAME": "worker-01"}
+			}
+			for name, value := range values {
+				t.Setenv(name, value)
+			}
+			t.Setenv("USE_TLS", "false")
+			a := newTestApplication(t)
+			if err := appconfig.InitConfig(filepath.Join(t.TempDir(), "missing.env"), &a.cfg); err != nil {
+				t.Fatal(err)
+			}
+			response := performRequest(a.state.Runtime.Router, "/")
+			if response.Code != http.StatusOK {
+				t.Fatalf("status page returned %d", response.Code)
+			}
+			for label, value := range map[string]string{"Pod Name": values["POD_NAME"], "Pod IP": values["POD_IP"], "Pod Namespace": values["POD_NAMESPACE"], "Node Name": values["NODE_NAME"]} {
+				if value == "" {
+					value = "N/A"
+				}
+				row := "<td>" + label + "</td> <td>" + value + "</td>"
+				if !strings.Contains(strings.Join(strings.Fields(response.Body.String()), " "), row) {
+					t.Errorf("status page missing %s = %s", label, value)
+				}
+			}
+		})
+	}
+}
 
 func TestReadinessEndpointReflectsShutdownState(t *testing.T) {
 	application := newTestApplication(t)
