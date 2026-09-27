@@ -237,11 +237,30 @@ git clone https://github.com/johannes-kuhfuss/shost.git
 
 The image and VM roots use the provider-native `PROXMOX_VE_API_TOKEN` environment variable. The VM root also uses the local SSH agent with the Linux user configured by `proxmox_ssh_username`.
 
-Edit the setup script and add your Proxmox token, then execute the script:
+Source the setup script in the same Bash shell where you will run OpenTofu:
 
 ```bash
 source stage02/infra/scripts/setup-opentofu-env.sh
 ```
+
+At the hidden prompt, enter the complete API token in the format
+`USER@REALM!TOKENID=UUID`. For the token created above, this is
+`opentofu@pve!opentofu=<token-secret>`. Replace `<token-secret>` with the UUID
+from the `value` field of the `pveum user token add` output. The part before
+`=` is its `full-tokenid` field. Do not enter only the UUID, include angle
+brackets, or put a backslash before `@` or `!`.
+
+The script also accepts an existing `PROXMOX_VE_API_TOKEN` environment variable.
+If OpenTofu reports that the token must be in the format
+`USER\@REALM!TOKENID=UUID`, clear the malformed value and source the script again:
+
+```bash
+unset PROXMOX_VE_API_TOKEN
+source stage02/infra/scripts/setup-opentofu-env.sh
+```
+
+These paths assume you are at the repository root. From
+`stage02/infra/opentofu/`, use `source ../scripts/setup-opentofu-env.sh` instead.
 
 ### Configuration
 
