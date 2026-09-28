@@ -19,7 +19,7 @@
                             </tr>
                         </thead>
                         <tbody>
-                            <tr><th scope="row">Subject</th><td>{{ .certificate.Subject }}</td></tr>
+                            <tr><th scope="row">Subject Common Name</th><td>{{ if .certificate.Subject }}{{ .certificate.Subject }}{{ else }}Not set{{ end }}</td></tr>
                             <tr><th scope="row">Issuer</th><td>{{ .certificate.Issuer }}</td></tr>
                             <tr><th scope="row">Serial Number</th><td class="text-break">{{ .certificate.SerialNumber }}</td></tr>
                             <tr>
