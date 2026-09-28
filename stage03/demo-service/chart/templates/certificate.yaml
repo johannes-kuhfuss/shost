@@ -2,21 +2,21 @@ apiVersion: cert-manager.io/v1
 kind: Certificate
 metadata:
   name: demo-service-backend
-  namespace: demo-service
+  namespace: {{ .Release.Namespace }}
 spec:
   secretName: demo-service-backend-tls
   # Deliberately short duration for testing with demo service
-  duration: 1h
+  duration: {{ .Values.certificate.duration | quote }}
   # Renew 15 minutes before expiry
-  renewBefore: 15m
+  renewBefore: {{ .Values.certificate.renewBefore | quote }}
 
   issuerRef:
     group: cert-manager.io
-    kind: ClusterIssuer
-    name: tc-jku-cluster-ca
+    kind: {{ .Values.certificate.issuerRef.kind }}
+    name: {{ .Values.certificate.issuerRef.name }}
 
   dnsNames:
-    - demo-service.demo-service.svc.cluster.local
+    - {{ include "demo-service.backendHostname" . }}
 
   privateKey:
     algorithm: ECDSA
@@ -28,3 +28,4 @@ spec:
   usages:
     - digital signature
     - server auth
+

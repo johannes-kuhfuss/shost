@@ -2,7 +2,7 @@ apiVersion: gateway.networking.k8s.io/v1
 kind: BackendTLSPolicy
 metadata:
   name: demo-service
-  namespace: demo-service
+  namespace: {{ .Release.Namespace }}
 spec:
   targetRefs:
     - group: ""
@@ -10,8 +10,9 @@ spec:
       name: demo-service
       sectionName: https
   validation:
-    hostname: demo-service.demo-service.svc.cluster.local
+    hostname: {{ include "demo-service.backendHostname" . }}
     caCertificateRefs:
       - group: ""
         kind: ConfigMap
-        name: tc-jku-internal-ca
+        name: {{ .Values.trustBundleName }}
+

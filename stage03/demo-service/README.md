@@ -54,6 +54,106 @@ docker run --rm --read-only --user 65532:65532 -p 8080:8080 \
 curl http://localhost:8080/health/ready
 ```
 
+## Kubernetes deployment with Helm
+
+Run these commands from `stage03/demo-service` using Helm 3.19+ or Helm 4.
+The chart owns the Deployment, Service, backend Certificate, BackendTLSPolicy,
+and HTTPRoute. Resource names and selectors stay `demo-service`; install only
+one release per namespace. TLS, probes, security settings, and certificate
+rotation retain their existing behavior.
+
+Prerequisites are the Gateway API CRDs (including BackendTLSPolicy v1), Cilium
+Gateway controller, cert-manager, the configured ClusterIssuer, trust-manager
+and its internal CA bundle, and the shared `observability/internal-web` Gateway
+with its `demo-service` listener and frontend certificate. These platform
+resources remain outside the application release. See the
+[platform setup](../cert-manager/README.md).
+
+Build and push an image with a unique version or commit tag to your registry.
+Set `IMAGE_TAG` to that published tag; the chart deliberately has no default
+image tag. Override `image.repository` if you use a different registry.
+
+```bash
+export IMAGE_TAG='replace-with-published-version-or-commit-tag'
+
+# One-time namespace bootstrap; preserves the Gateway and trust-bundle labels.
+kubectl apply -f manifests/namespace.yaml
+
+helm upgrade --install demo-service ./chart \
+  --namespace demo-service \
+  --values values-lab.yaml \
+  --set-string image.tag="$IMAGE_TAG" \
+  --wait --timeout 5m
+```
+
+The namespace remains outside Helm so uninstalling the application does not
+delete the namespace or controller-managed trust bundle. For a different
+namespace, create it with the same opt-in labels and use that namespace in the
+Helm command. The backend certificate DNS name and TLS policy automatically
+follow the release namespace and `clusterDomain`.
+
+`chart/values.yaml` documents the available settings: image, replica count,
+resource requests/limits, logging, shutdown timing, hostname, gateway reference,
+certificate issuer/lifetime, and trust bundle. `values-lab.yaml` holds the lab
+platform references. The schema checks required values and logging options;
+template validation requires the termination grace period to exceed drain plus
+shutdown time. Use immutable tags so Helm rollback restores a known image.
+
+### Migrate an existing kubectl deployment
+
+Keep the namespace and existing resources in place. Review the rendered chart
+before adoption, using the image tag you intend to run:
+
+```bash
+helm template demo-service ./chart --namespace demo-service \
+  -f values-lab.yaml --set-string image.tag="$IMAGE_TAG" > /tmp/demo-service.yaml
+kubectl diff -f /tmp/demo-service.yaml
+```
+
+`kubectl diff` exits with status 1 when it finds changes. Confirm that names,
+selectors, gateway references, and certificate settings match the existing
+installation. Then run the deployment command above with `--take-ownership`
+added **once**. This explicitly adopts the five existing application resources
+into the release. Do not delete them first. A pod rollout is expected if the
+image or pod configuration changes. Subsequent upgrades omit this flag and use
+Helm exclusively; the old raw application manifests have been replaced by the
+chart. The namespace manifest is still used for bootstrap.
+
+Helm's [ownership documentation](https://docs.helm.sh/docs/v3/topics/advanced/)
+describes adoption. Avoid automatic uninstall-on-failure during the initial
+adoption: inspect a failed release and correct it with another upgrade. Helm
+cannot roll back to the pre-Helm deployment because it has no release revision
+for that state.
+
+### Verify, upgrade, and remove
+
+Helm waiting for the Deployment is not an end-to-end Gateway TLS check. Verify
+the controller-managed resources after installation:
+
+```bash
+kubectl -n demo-service wait certificate/demo-service-backend --for=condition=Ready --timeout=2m
+kubectl -n demo-service wait configmap/tc-jku-internal-ca --for=create --timeout=2m
+kubectl -n demo-service describe backendtlspolicy demo-service
+kubectl -n demo-service describe httproute demo-service
+curl --fail --cacert /path/to/internal-root-ca.pem https://demo.tc.jku.internal/health/ready
+```
+
+Check `Accepted=True` for the backend policy and `Accepted=True` and
+`ResolvedRefs=True` for the route. The platform guide also describes verifying
+the distributed CA fingerprint. Set a new `IMAGE_TAG` and repeat the upgrade
+command to deploy another version. Inspect or roll back recorded releases with:
+
+```bash
+helm history demo-service --namespace demo-service
+helm rollback demo-service <revision> --namespace demo-service --wait --timeout 5m
+```
+
+Remove the application with `helm uninstall demo-service --namespace demo-service`.
+The namespace, trust bundle, and shared platform remain. The backend TLS Secret
+is managed by cert-manager; its deletion depends on cert-manager's certificate
+owner-reference configuration. Delete the namespace separately only when its
+remaining resources are no longer needed.
+
 ## TLS
 
 TLS is enabled by setting `USE_TLS=true` and mounting a certificate and matching
@@ -174,5 +274,17 @@ alongside the Linux race tests.
 
 The repository workflow also validates the Kubernetes manifests, builds the
 container, and smoke-tests it as UID/GID 65532 with a read-only root filesystem.
+It lints the Helm chart, renders the lab and alternate-namespace configurations,
+and rejects missing image tags, invalid log levels, and insufficient shutdown
+budgets. Kubeconform checks built-in Kubernetes resources; custom resources
+without available schemas are skipped. Their acceptance is checked against the
+installed controllers during deployment verification. To check the chart locally:
+
+```bash
+helm lint chart --strict -f values-lab.yaml --set-string image.tag=ci
+helm template demo-service chart --namespace demo-service \
+  -f values-lab.yaml --set-string image.tag=ci
+```
+
 All test certificates are generated at test time; no reusable private key is
 stored in the repository.

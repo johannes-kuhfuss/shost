@@ -691,17 +691,25 @@ verified TC JKU Internal Root CA.
 
 ## 10. Deploy and verify the demo service with backend TLS
 
-Before you deploy, make sure the latest version of the demo-service is built and available in a suitable Docker registry. Then adjust the image location in `demo-service/manifests/app.yaml`.
+Build and push a uniquely tagged demo-service image first. Use Helm 3.19+ or
+Helm 4 and set `IMAGE_TAG` to that published tag. Override `image.repository`
+if you use a different registry. The namespace opts into the shared Gateway
+and trust bundle and remains outside the Helm release.
 
-The demo namespace in `demo-service/manifests/app.yaml` opts into both the
-shared Gateway and the trust bundle. Apply the workload resources in dependency
-order:
+For an existing kubectl deployment, first follow the
+[one-time adoption instructions](../demo-service/README.md#migrate-an-existing-kubectl-deployment).
+The commands below start from `stage03`:
 
 ```bash
-# Creates the Namespace, Deployment, and Service. The Pod may wait for its
-# certificate Secret until the following Certificate becomes Ready.
-kubectl apply -f demo-service/manifests/app.yaml
-kubectl apply -f demo-service/manifests/certificate.yaml
+export IMAGE_TAG='replace-with-published-version-or-commit-tag'
+kubectl apply -f demo-service/manifests/namespace.yaml
+helm upgrade --install demo-service ./demo-service/chart \
+  --namespace demo-service \
+  --values demo-service/values-lab.yaml \
+  --set-string image.tag="$IMAGE_TAG" \
+  --wait --timeout 5m
+
+# Verify controller-managed TLS resources after Helm completes.
 kubectl wait -n demo-service certificate/demo-service-backend \
   --for=condition=Ready \
   --timeout=2m
@@ -711,9 +719,6 @@ kubectl wait -n demo-service configmap/tc-jku-internal-ca \
   --for=create \
   --timeout=2m
 
-kubectl apply -f demo-service/manifests/backend-tls-policy.yaml
-kubectl apply -f demo-service/manifests/http-route.yaml
-kubectl -n demo-service rollout status deployment/demo-service --timeout=5m
 ```
 
 Check that the Certificate, trust bundle, backend TLS policy, and Route were
@@ -869,10 +874,10 @@ before the 20-year root expires.
 Remove only the Stage 03 resources, leaving Cilium and Hubble themselves intact:
 
 ```bash
-kubectl delete -f demo-service/manifests/http-route.yaml --ignore-not-found
-kubectl delete -f demo-service/manifests/backend-tls-policy.yaml --ignore-not-found
-kubectl delete -f demo-service/manifests/certificate.yaml --ignore-not-found
-kubectl delete -f demo-service/manifests/app.yaml --ignore-not-found
+helm uninstall demo-service --namespace demo-service
+# Optional: removes all remaining resources in the demo namespace.
+# Run only when no longer needed; Helm deliberately leaves this namespace intact.
+kubectl delete -f demo-service/manifests/namespace.yaml --ignore-not-found
 
 kubectl delete -f cert-manager/manifests/hubble/http-route.yaml
 kubectl delete -f cert-manager/manifests/hubble/reference-grant.yaml

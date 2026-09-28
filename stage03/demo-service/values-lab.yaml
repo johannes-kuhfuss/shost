@@ -1,0 +1,14 @@
+# Lab-specific platform references. Supply image.tag at deployment time.
+hostname: demo.tc.jku.internal
+gateway:
+  name: internal-web
+  namespace: observability
+  sectionName: demo-service
+certificate:
+  issuerRef:
+    kind: ClusterIssuer
+    name: tc-jku-cluster-ca
+  # Short lifetime intentionally demonstrates automatic certificate rotation.
+  duration: 1h
+  renewBefore: 15m
+trustBundleName: tc-jku-internal-ca
