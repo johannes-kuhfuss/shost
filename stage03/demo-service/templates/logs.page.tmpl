@@ -1,0 +1,27 @@
+{{ define "logs.page.tmpl" }}
+{{ template "header" . }}
+    <div class="container-fluid py-5">
+        <h3>Write a log message</h3>
+        <p>Send a message to the service logs at the selected severity.</p>
+        {{ if .error }}<div class="alert alert-danger" role="alert">{{ .error }}</div>{{ end }}
+        {{ if eq .sent "written" }}<div class="alert alert-success" role="status">Log message sent.</div>{{ end }}
+        {{ if eq .sent "filtered" }}<div class="alert alert-warning" role="status">Message filtered out: the selected severity is below the configured minimum log level.</div>{{ end }}
+        <form method="post" action="/logs" style="max-width: 48rem">
+            <div class="mb-3">
+                <label for="message" class="form-label">Message</label>
+                <textarea id="message" name="message" class="form-control" rows="4" maxlength="4096" required>{{ .message }}</textarea>
+            </div>
+            <div class="mb-3">
+                <label for="severity" class="form-label">Severity</label>
+                <select id="severity" name="severity" class="form-select">
+                    <option value="debug" {{ if eq .severity "debug" }}selected{{ end }}>Debug</option>
+                    <option value="info" {{ if eq .severity "info" }}selected{{ end }}>Info</option>
+                    <option value="warn" {{ if eq .severity "warn" }}selected{{ end }}>Warn</option>
+                    <option value="error" {{ if eq .severity "error" }}selected{{ end }}>Error</option>
+                </select>
+            </div>
+            <button type="submit" class="btn btn-primary">Send</button>
+        </form>
+    </div>
+{{ template "footer" . }}
+{{ end }}

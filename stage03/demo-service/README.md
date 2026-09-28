@@ -18,6 +18,7 @@ shutdown, backend TLS, and automatic certificate rotation.
 | `/health/startup` | Startup probe |
 | `/health/ready` | Readiness probe; returns 503 while draining |
 | `/health/live` | Liveness probe |
+| `/logs` | Form to write a message with Debug, Info, Warn, or Error severity (GET displays the form; POST sends the message) |
 | `/certificate` | Web page displaying the current TLS certificate's subject, issuer, serial number, DNS names, validity dates, and SHA-256 fingerprint |
 
 `/certificate` returns 503 when TLS is disabled or no certificate has been
@@ -111,6 +112,11 @@ when running locally). Values are read at application startup.
 ## Logging
 
 The service uses Go's `log/slog` with structured attributes and writes to stderr.
+The Logs page sends messages through the same logger with request context and
+`log.source=web`. Messages must contain 1–4,096 characters. The page reports
+when `LOG_LEVEL` filters out the chosen severity; use `LOG_LEVEL=debug` to
+exercise all four levels. Successful submissions redirect to prevent refresh
+from sending the message again.
 The default text output is readable in the terminal and through `kubectl logs`:
 
 ```text

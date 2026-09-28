@@ -221,6 +221,8 @@ func (a *Application) mapUrls() error {
 	a.router.GET("/", a.statsUiHandler.StatusPage)
 	a.router.GET("/ping", a.pong)
 	a.router.GET("/probes", a.statsUiHandler.ProbesPage)
+	a.router.GET("/logs", a.logPage)
+	a.router.POST("/logs", a.sendLog)
 	a.router.POST("/probes/liveness", a.statsUiHandler.SetLiveness)
 	a.router.POST("/probes/readiness", a.statsUiHandler.DisableReadiness)
 	a.router.GET("/health/startup", a.startup)
