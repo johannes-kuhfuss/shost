@@ -1,0 +1,149 @@
+fullnameOverride: grafana
+replicas: 1
+deploymentStrategy:
+  type: Recreate
+automountServiceAccountToken: false
+admin:
+  existingSecret: grafana-admin
+  userKey: admin-user
+  passwordKey: admin-password
+persistence:
+  enabled: true
+  storageClassName: local-path
+  size: 1Gi
+  annotations:
+    helm.sh/resource-policy: keep
+initChownData:
+  enabled: false
+resources:
+  requests:
+    cpu: 50m
+    memory: 128Mi
+  limits:
+    memory: 512Mi
+service:
+  port: 443
+  portName: https
+extraSecretMounts:
+  - name: backend-tls
+    secretName: grafana-backend-tls
+    mountPath: /var/run/grafana/tls
+    readOnly: true
+readinessProbe:
+  httpGet:
+    path: /api/health
+    port: 3000
+    scheme: HTTPS
+livenessProbe:
+  httpGet:
+    path: /api/health
+    port: 3000
+    scheme: HTTPS
+  initialDelaySeconds: 60
+grafana.ini:
+  server:
+    protocol: https
+    domain: grafana.tc.jku.internal
+    root_url: https://grafana.tc.jku.internal
+    cert_file: /var/run/grafana/tls/tls.crt
+    cert_key: /var/run/grafana/tls/tls.key
+    certs_watch_interval: 1m
+    min_tls_version: TLS1.3
+  security:
+    cookie_secure: true
+  users:
+    allow_sign_up: false
+  auth.anonymous:
+    enabled: false
+  auth.basic:
+    enabled: true
+  analytics:
+    reporting_enabled: false
+    check_for_updates: false
+  dashboards:
+    default_home_dashboard_path: /var/lib/grafana/dashboards/platform/overview.json
+datasources:
+  datasources.yaml:
+    apiVersion: 1
+    prune: true
+    datasources:
+      - name: Prometheus
+        uid: prometheus
+        type: prometheus
+        access: proxy
+        url: http://prometheus-server:80
+        isDefault: true
+        editable: false
+        jsonData:
+          httpMethod: POST
+          timeInterval: 30s
+          exemplarTraceIdDestinations:
+            - name: trace_id
+              datasourceUid: tempo
+      - name: Loki
+        uid: loki
+        type: loki
+        access: proxy
+        url: http://loki:3100
+        editable: false
+        jsonData:
+          derivedFields:
+            - name: TraceID
+              matcherType: label
+              matcherRegex: trace_id
+              datasourceUid: tempo
+              url: '$${__value.raw}'
+              urlDisplayLabel: View trace
+            - name: JSONTraceID
+              matcherRegex: '"trace_id"\s*:\s*"([a-fA-F0-9]{32})"'
+              datasourceUid: tempo
+              url: '$${__value.raw}'
+              urlDisplayLabel: View trace
+      - name: Tempo
+        uid: tempo
+        type: tempo
+        access: proxy
+        url: http://tempo:3200
+        editable: false
+        jsonData:
+          httpMethod: GET
+          nodeGraph:
+            enabled: true
+          serviceMap:
+            datasourceUid: prometheus
+          tracesToLogsV2:
+            datasourceUid: loki
+            spanStartTimeShift: -1m
+            spanEndTimeShift: 1m
+            tags:
+              - key: service.name
+                value: service_name
+            customQuery: true
+            filterByTraceID: false
+            filterBySpanID: false
+            query: '{$${__tags}} | json | trace_id = "$${__trace.traceId}"'
+          tracesToMetrics:
+            datasourceUid: prometheus
+            spanStartTimeShift: -5m
+            spanEndTimeShift: 5m
+            tags:
+              - key: service.name
+                value: service
+            queries:
+              - name: Request rate
+                query: 'sum(rate(traces_spanmetrics_calls_total{$${__tags}}[5m]))'
+              - name: Latency p95
+                query: 'histogram_quantile(0.95, sum by (le) (rate(traces_spanmetrics_latency_bucket{$${__tags}}[5m])))'
+dashboardProviders:
+  dashboardproviders.yaml:
+    apiVersion: 1
+    providers:
+      - name: platform
+        orgId: 1
+        folder: Platform
+        type: file
+        disableDeletion: false
+        editable: false
+        options:
+          path: /var/lib/grafana/dashboards/platform
+# The install/render commands inject dashboards.platform.overview.json from disk.

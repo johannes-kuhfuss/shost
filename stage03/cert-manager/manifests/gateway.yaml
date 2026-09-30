@@ -18,6 +18,22 @@ spec:
     - type: IPAddress
       value: 192.168.200.221
   listeners:
+    - name: grafana
+      hostname: grafana.tc.jku.internal
+      port: 443
+      protocol: HTTPS
+      allowedRoutes:
+        namespaces:
+          from: Selector
+          selector:
+            matchLabels:
+              internal-web-gateway-access: "true"
+      tls:
+        mode: Terminate
+        certificateRefs:
+          - group: ""
+            kind: Secret
+            name: grafana-tls
     - name: hubble
       hostname: hubble.tc.jku.internal
       port: 443

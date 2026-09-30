@@ -1,0 +1,48 @@
+fullnameOverride: tempo
+replicas: 1
+tempo:
+  reportingEnabled: false
+  retention: 168h
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      memory: 1Gi
+  receivers:
+    otlp:
+      protocols:
+        grpc:
+          endpoint: 0.0.0.0:4317
+        http:
+          endpoint: 0.0.0.0:4318
+  # Generate service metrics and exemplars once instrumented clients send traces.
+  metricsGenerator:
+    enabled: true
+    storage:
+      path: /var/tempo/metrics
+      remote_write:
+        - url: http://prometheus-server:80/api/v1/write
+          send_exemplars: true
+  overrides:
+    defaults:
+      metrics_generator:
+        processors: [service-graphs, span-metrics]
+  securityContext:
+    allowPrivilegeEscalation: false
+    capabilities:
+      drop: [ALL]
+securityContext:
+  runAsNonRoot: true
+  runAsUser: 10001
+  runAsGroup: 10001
+  fsGroup: 10001
+  seccompProfile:
+    type: RuntimeDefault
+serviceAccount:
+  automountServiceAccountToken: false
+persistence:
+  enabled: true
+  storageClassName: local-path
+  size: 10Gi
+  enableStatefulSetAutoDeletePVC: false

@@ -1,0 +1,96 @@
+# Standalone Prometheus with kube-state-metrics; no operator required.
+alertmanager:
+  enabled: false
+prometheus-pushgateway:
+  enabled: false
+# Use kubelet/cAdvisor for node and container metrics without host mounts.
+prometheus-node-exporter:
+  enabled: false
+kube-state-metrics:
+  enabled: true
+  fullnameOverride: kube-state-metrics
+  resources:
+    requests:
+      cpu: 20m
+      memory: 64Mi
+    limits:
+      memory: 256Mi
+server:
+  fullnameOverride: prometheus-server
+  replicaCount: 1
+  strategy:
+    type: Recreate
+  retention: 15d
+  retentionSize: 8GB
+  persistentVolume:
+    enabled: true
+    storageClass: local-path
+    size: 10Gi
+    annotations:
+      helm.sh/resource-policy: keep
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      memory: 1536Mi
+  extraFlags:
+    - web.enable-lifecycle
+    - web.enable-otlp-receiver
+    - web.enable-remote-write-receiver
+    - enable-feature=exemplar-storage
+  exemplars:
+    max_exemplars: 10000
+  global:
+    scrape_interval: 30s
+    evaluation_interval: 30s
+  otlp:
+    promote_resource_attributes:
+      - service.name
+      - service.namespace
+      - k8s.namespace.name
+    keep_identifying_resource_attributes: true
+  tsdb:
+    out_of_order_time_window: 5m
+scrapeConfigs:
+  # Proxy via the API server to verify TLS with the service-account CA.
+  kubernetes-nodes:
+    tls_config:
+      insecure_skip_verify: false
+    relabel_configs:
+      - source_labels: [__meta_kubernetes_node_name]
+        target_label: node
+      - target_label: __address__
+        replacement: kubernetes.default.svc:443
+      - source_labels: [__meta_kubernetes_node_name]
+        target_label: __metrics_path__
+        replacement: /api/v1/nodes/$1/proxy/metrics
+  kubernetes-nodes-cadvisor:
+    tls_config:
+      insecure_skip_verify: false
+    relabel_configs:
+      - source_labels: [__meta_kubernetes_node_name]
+        target_label: node
+      - target_label: __address__
+        replacement: kubernetes.default.svc:443
+      - source_labels: [__meta_kubernetes_node_name]
+        target_label: __metrics_path__
+        replacement: /api/v1/nodes/$1/proxy/metrics/cadvisor
+  kubernetes-service-endpoints:
+    enabled: false
+  kubernetes-service-endpoints-slow:
+    enabled: false
+  kubernetes-pods:
+    enabled: false
+  kubernetes-pods-slow:
+    enabled: false
+  kubernetes-services:
+    enabled: false
+  prometheus-pushgateway:
+    enabled: false
+  kube-state-metrics:
+    static_configs:
+      - targets: [kube-state-metrics:8080]
+  observability:
+    static_configs:
+      - targets: [loki:3100, tempo:3200, alloy:12345]

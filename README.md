@@ -9,3 +9,4 @@ This is not ready for primetime. Use at your own peril.
 - [Stage 03 - cert-manager and Hubble HTTPS](stage03/cert-manager/README.md)
 - [Stage 03 - CloudNativePG operator](stage03/cloudnative-pg/README.md)
 - [Stage 03 - Authentik with CloudNativePG](stage03/authentik/README.md)
+- [Stage 03 - Observability: Grafana, Prometheus, Loki, Tempo, and Alloy](stage03/observability/README.md)

@@ -1,0 +1,52 @@
+name: Observability stack
+
+on:
+  push:
+    paths:
+      - "stage03/observability/**"
+      - "stage03/cert-manager/manifests/gateway.yaml"
+      - "stage03/cert-manager/manifests/namespace.yaml"
+      - ".github/workflows/observability.yml"
+  pull_request:
+    paths:
+      - "stage03/observability/**"
+      - "stage03/cert-manager/manifests/gateway.yaml"
+      - "stage03/cert-manager/manifests/namespace.yaml"
+      - ".github/workflows/observability.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: stage03/observability
+    steps:
+      - uses: actions/checkout@v7
+      - uses: azure/setup-helm@v4.3.1
+        with:
+          version: v3.19.0
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+      - run: python3 -m pip install PyYAML==6.0.3
+      - name: Lint, render, and validate integration
+        run: bash render.sh /tmp/observability-rendered
+      - name: Validate native application configurations
+        shell: bash
+        run: |
+          set -euo pipefail
+          output=/tmp/observability-rendered
+          image_for() {
+            python3 -c 'import json, sys; print(json.load(open(sys.argv[1]))[sys.argv[2]])' "$output/images.json" "$1"
+          }
+          docker run --rm -v "$PWD/alloy/config.alloy:/etc/alloy/config.alloy:ro" \
+            "$(image_for alloy)" validate /etc/alloy/config.alloy
+          docker run --rm --entrypoint /bin/promtool -v "$output/configs:/etc/config:ro" \
+            "$(image_for prometheus-server)" check config --syntax-only /etc/config/prometheus.yml
+          docker run --rm -v "$output/configs:/config:ro" \
+            "$(image_for loki)" -config.file=/config/config.yaml -verify-config=true
+          docker run --rm -v "$output/configs:/conf:ro" \
+            "$(image_for tempo)" --config.file=/conf/tempo.yaml --config.verify=true

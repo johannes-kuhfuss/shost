@@ -4,3 +4,4 @@ metadata:
   name: observability
   labels:
     internal-web-gateway-access: "true"
+    trust.tc.jku.internal/internal-ca: "true"

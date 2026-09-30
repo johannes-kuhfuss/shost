@@ -1,0 +1,69 @@
+{
+  "uid": "platform-overview",
+  "title": "Platform overview",
+  "schemaVersion": 39,
+  "version": 1,
+  "editable": false,
+  "tags": ["platform"],
+  "timezone": "browser",
+  "refresh": "30s",
+  "time": {"from": "now-1h", "to": "now"},
+  "panels": [
+    {
+      "id": 1, "type": "stat", "title": "Ready nodes",
+      "gridPos": {"x": 0, "y": 0, "w": 6, "h": 4},
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [{"refId": "A", "expr": "sum(kube_node_status_condition{condition=\"Ready\",status=\"true\"})", "instant": true}],
+      "options": {"reduceOptions": {"calcs": ["lastNotNull"]}}
+    },
+    {
+      "id": 2, "type": "stat", "title": "Running pods",
+      "gridPos": {"x": 6, "y": 0, "w": 6, "h": 4},
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [{"refId": "A", "expr": "sum(kube_pod_status_phase{phase=\"Running\"})", "instant": true}],
+      "options": {"reduceOptions": {"calcs": ["lastNotNull"]}}
+    },
+    {
+      "id": 3, "type": "stat", "title": "Scrape targets down",
+      "gridPos": {"x": 12, "y": 0, "w": 6, "h": 4},
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [{"refId": "A", "expr": "sum(1 - up)", "instant": true}],
+      "options": {"reduceOptions": {"calcs": ["lastNotNull"]}},
+      "fieldConfig": {"defaults": {"thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "red", "value": 1}]}}, "overrides": []}
+    },
+    {
+      "id": 4, "type": "stat", "title": "Container restarts in last hour",
+      "gridPos": {"x": 18, "y": 0, "w": 6, "h": 4},
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [{"refId": "A", "expr": "sum(increase(kube_pod_container_status_restarts_total[1h]))", "instant": true}],
+      "options": {"reduceOptions": {"calcs": ["lastNotNull"]}}
+    },
+    {
+      "id": 5, "type": "timeseries", "title": "Container CPU by namespace (cores)",
+      "gridPos": {"x": 0, "y": 4, "w": 12, "h": 8},
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [{"refId": "A", "expr": "sum by (namespace) (rate(container_cpu_usage_seconds_total{job=\"kubernetes-nodes-cadvisor\",container!=\"\",container!=\"POD\",namespace!=\"\"}[5m]))", "legendFormat": "{{namespace}}"}]
+    },
+    {
+      "id": 6, "type": "timeseries", "title": "Container memory by namespace",
+      "gridPos": {"x": 12, "y": 4, "w": 12, "h": 8},
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [{"refId": "A", "expr": "sum by (namespace) (container_memory_working_set_bytes{job=\"kubernetes-nodes-cadvisor\",container!=\"\",container!=\"POD\",namespace!=\"\"})", "legendFormat": "{{namespace}}"}],
+      "fieldConfig": {"defaults": {"unit": "bytes"}, "overrides": []}
+    },
+    {
+      "id": 7, "type": "timeseries", "title": "Scrape target health (1 = up)",
+      "gridPos": {"x": 0, "y": 12, "w": 24, "h": 7},
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [{"refId": "A", "expr": "up", "legendFormat": "{{job}} {{node}} {{instance}}"}],
+      "fieldConfig": {"defaults": {"min": 0, "max": 1}, "overrides": []}
+    },
+    {
+      "id": 8, "type": "logs", "title": "Observability container logs",
+      "gridPos": {"x": 0, "y": 19, "w": 24, "h": 10},
+      "datasource": {"type": "loki", "uid": "loki"},
+      "targets": [{"refId": "A", "expr": "{namespace=\"observability\"}", "queryType": "range"}],
+      "options": {"showTime": true, "sortOrder": "Descending", "wrapLogMessage": true}
+    }
+  ]
+}

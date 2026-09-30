@@ -1,0 +1,22 @@
+# Supplement the upstream chart's discovery role for kubelet API proxy scrapes.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: observability-prometheus-node-proxy
+rules:
+  - apiGroups: [""]
+    resources: [nodes/proxy]
+    verbs: [get]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: observability-prometheus-node-proxy
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: observability-prometheus-node-proxy
+subjects:
+  - kind: ServiceAccount
+    name: prometheus-server
+    namespace: observability
