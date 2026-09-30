@@ -2,17 +2,17 @@ apiVersion: gateway.networking.k8s.io/v1
 kind: HTTPRoute
 metadata:
   name: demo-service
-  namespace: {{ .Release.Namespace }}
+  namespace: demo-service
 spec:
   parentRefs:
     - group: gateway.networking.k8s.io
       kind: Gateway
-      name: {{ .Values.gateway.name }}
-      namespace: {{ .Values.gateway.namespace }}
-      sectionName: {{ .Values.gateway.sectionName }}
+      name: internal-web
+      namespace: observability
+      sectionName: demo-service
 
   hostnames:
-    - {{ .Values.hostname | quote }}
+    - demo.tc.jku.internal
 
   rules:
     - matches:
@@ -24,4 +24,3 @@ spec:
           kind: Service
           name: demo-service
           port: 443
-

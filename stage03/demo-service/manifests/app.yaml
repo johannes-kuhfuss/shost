@@ -1,10 +1,18 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: demo-service
+  labels:
+    internal-web-gateway-access: "true"
+    trust.tc.jku.internal/internal-ca: "true"
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: demo-service
-  namespace: {{ .Release.Namespace }}
+  namespace: demo-service
 spec:
-  replicas: {{ .Values.replicaCount }}
+  replicas: 1
   # Limit revision history to limit clutter
   revisionHistoryLimit: 3
   selector:
@@ -15,8 +23,8 @@ spec:
       labels:
         app.kubernetes.io/name: demo-service
     spec:
-      # The chart validates that the grace period exceeds drain + shutdown.
-      terminationGracePeriodSeconds: {{ .Values.shutdown.terminationGracePeriodSeconds }}
+      # 12s drain + 10s shutdown timeout leaves 8s of safety margin.
+      terminationGracePeriodSeconds: 30
       securityContext:
         # Comply with PSA Restricted 
         # Do not run as root
@@ -29,8 +37,8 @@ spec:
           type: RuntimeDefault
       containers:
         - name: demo-service
-          image: {{ printf "%s:%s" .Values.image.repository (required "Set image.tag to a published version or commit tag" .Values.image.tag) | quote }}
-          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          image: docker.io/johanneskuhfuss/demo-service:latest
+          imagePullPolicy: Always
 
           # Specify environment variables
           # The first 4 environment variables inject K8s runtime information into the Pod for display purposes
@@ -60,13 +68,9 @@ spec:
             - name: USE_TLS
               value: "true"
             - name: DRAIN_REQUESTS_TIME
-              value: {{ .Values.shutdown.drainSeconds | quote }}
+              value: "12"
             - name: GRACEFUL_SHUTDOWN_TIME
-              value: {{ .Values.shutdown.timeoutSeconds | quote }}
-            - name: LOG_FORMAT
-              value: {{ .Values.logging.format | quote }}
-            - name: LOG_LEVEL
-              value: {{ .Values.logging.level | quote }}
+              value: "10"
             - name: GIN_MODE
               value: "release"
             - name: CERT_FILE
@@ -114,7 +118,12 @@ spec:
             failureThreshold: 3
 
           # Tune the following to your service
-          resources:{{ toYaml .Values.resources | nindent 12 }}
+          resources:
+            requests:
+              cpu: 20m
+              memory: 32Mi
+            limits:
+              memory: 128Mi
 
           securityContext:
             # Do not allow service to gain privileges
@@ -138,4 +147,17 @@ spec:
         - name: backend-tls
           secret:
             secretName: demo-service-backend-tls
-
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: demo-service
+  namespace: demo-service
+spec:
+  selector:
+    app.kubernetes.io/name: demo-service
+  ports:
+    - name: https
+      port: 443
+      targetPort: https
+      protocol: TCP

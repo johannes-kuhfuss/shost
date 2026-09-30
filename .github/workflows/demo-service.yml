@@ -49,53 +49,20 @@ jobs:
         working-directory: stage03/demo-service/e2e
         run: npm test
 
-      - uses: azure/setup-helm@v4.3.1
-        with:
-          version: v3.19.0
-
-      - name: Validate Helm chart
-        shell: bash
-        run: |
-          set -euo pipefail
-          helm lint chart --strict --set-string image.tag=ci
-          helm lint chart --strict -f values-lab.yaml --set-string image.tag=ci
-          mkdir -p rendered
-          helm template demo-service chart --namespace demo-service -f values-lab.yaml --set-string image.tag=ci > rendered/demo-service.yaml
-          helm template demo-service chart --namespace demo-test --set-string image.tag=ci \
-            --set clusterDomain=example.local --set logging.level=debug --set logging.format=json \
-            --set replicaCount=2 > rendered/alternate.yaml
-          test "$(grep -c 'demo-service.demo-test.svc.example.local' rendered/alternate.yaml)" -eq 2
-          grep -q 'replicas: 2' rendered/alternate.yaml
-          grep -q 'value: "debug"' rendered/alternate.yaml
-          grep -q 'value: "json"' rendered/alternate.yaml
-          if helm template demo-service chart --set-string image.tag=ci --set shutdown.terminationGracePeriodSeconds=22; then
-            echo 'Chart accepted an insufficient shutdown budget' >&2
-            exit 1
-          fi
-          if helm template demo-service chart; then
-            echo 'Chart accepted a missing image tag' >&2
-            exit 1
-          fi
-          if helm template demo-service chart --set-string image.tag=ci --set logging.level=fatal; then
-            echo 'Chart accepted an invalid logging level' >&2
-            exit 1
-          fi
-
-      - name: Validate rendered Kubernetes manifests
+      - name: Validate Kubernetes manifests
         run: >-
           docker run --rm
-          -v "${PWD}/rendered:/rendered:ro"
           -v "${PWD}/manifests:/manifests:ro"
           ghcr.io/yannh/kubeconform:v0.7.0
-          -strict -summary -ignore-missing-schemas /rendered /manifests
+          -strict -summary -ignore-missing-schemas /manifests
 
       - name: Verify shutdown budget
         shell: bash
         run: |
           set -euo pipefail
-          termination="$(awk '/terminationGracePeriodSeconds:/ { print $2 }' rendered/demo-service.yaml)"
-          drain="$(awk '/name: DRAIN_REQUESTS_TIME/ { getline; gsub(/"/, "", $2); print $2 }' rendered/demo-service.yaml)"
-          shutdown="$(awk '/name: GRACEFUL_SHUTDOWN_TIME/ { getline; gsub(/"/, "", $2); print $2 }' rendered/demo-service.yaml)"
+          termination="$(awk '/terminationGracePeriodSeconds:/ { print $2 }' manifests/app.yaml)"
+          drain="$(awk '/name: DRAIN_REQUESTS_TIME/ { getline; gsub(/"/, "", $2); print $2 }' manifests/app.yaml)"
+          shutdown="$(awk '/name: GRACEFUL_SHUTDOWN_TIME/ { getline; gsub(/"/, "", $2); print $2 }' manifests/app.yaml)"
           test "$termination" -gt "$((drain + shutdown))"
 
       - name: Authenticate to DHI

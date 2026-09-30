@@ -1,3 +1,0 @@
-{{- if le (int .Values.shutdown.terminationGracePeriodSeconds) (int (add .Values.shutdown.drainSeconds .Values.shutdown.timeoutSeconds)) -}}
-{{- fail "shutdown.terminationGracePeriodSeconds must exceed drainSeconds + timeoutSeconds" -}}
-{{- end -}}
