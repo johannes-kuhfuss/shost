@@ -5,9 +5,11 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 var configEnvironment = []string{
+	"POD_UID", "OTEL_ENABLED", "OTEL_METRIC_EXPORT_INTERVAL", "OTEL_SHUTDOWN_TIMEOUT",
 	"POD_NAME",
 	"POD_IP",
 	"POD_NAMESPACE",
@@ -79,6 +81,8 @@ func TestInitConfigRejectsMalformedEnvironment(t *testing.T) {
 
 func TestValidateConfig(t *testing.T) {
 	valid := AppConfig{}
+	valid.Telemetry.MetricIntervalMS = 15000
+	valid.Telemetry.ShutdownTimeout = 5 * time.Second
 	valid.Server.Port = "8080"
 	valid.Server.TLSPort = "8443"
 	valid.Server.GracefulShutdownTime = 10
@@ -88,6 +92,9 @@ func TestValidateConfig(t *testing.T) {
 		mutate func(*AppConfig)
 		want   string
 	}{
+		{name: "zero metric interval", mutate: func(c *AppConfig) { c.Telemetry.MetricIntervalMS = 0 }, want: "OTEL_METRIC_EXPORT_INTERVAL"},
+		{name: "excessive metric interval", mutate: func(c *AppConfig) { c.Telemetry.MetricIntervalMS = 3600001 }, want: "OTEL_METRIC_EXPORT_INTERVAL"},
+		{name: "zero telemetry shutdown", mutate: func(c *AppConfig) { c.Telemetry.ShutdownTimeout = 0 }, want: "OTEL_SHUTDOWN_TIMEOUT"},
 		{name: "zero shutdown", mutate: func(c *AppConfig) { c.Server.GracefulShutdownTime = 0 }, want: "graceful shutdown"},
 		{name: "negative drain", mutate: func(c *AppConfig) { c.Server.DrainRequestsTime = -1 }, want: "drain requests"},
 		{name: "invalid HTTP port", mutate: func(c *AppConfig) { c.Server.Port = "nope" }, want: "server port"},
@@ -114,6 +121,8 @@ func TestValidateConfig(t *testing.T) {
 
 func TestTLSDisabledDoesNotRequireCertificateFiles(t *testing.T) {
 	config := AppConfig{}
+	config.Telemetry.MetricIntervalMS = 15000
+	config.Telemetry.ShutdownTimeout = 5 * time.Second
 	config.Server.Port = "8080"
 	config.Server.TLSPort = "8443"
 	config.Server.GracefulShutdownTime = 1
@@ -130,6 +139,8 @@ func TestValidateConfigRejectsMissingKey(t *testing.T) {
 		t.Fatal(err)
 	}
 	config := AppConfig{}
+	config.Telemetry.MetricIntervalMS = 15000
+	config.Telemetry.ShutdownTimeout = 5 * time.Second
 	config.Server.Port = "8080"
 	config.Server.TLSPort = "8443"
 	config.Server.GracefulShutdownTime = 1

@@ -63,7 +63,8 @@ jobs:
           termination="$(awk '/terminationGracePeriodSeconds:/ { print $2 }' manifests/app.yaml)"
           drain="$(awk '/name: DRAIN_REQUESTS_TIME/ { getline; gsub(/"/, "", $2); print $2 }' manifests/app.yaml)"
           shutdown="$(awk '/name: GRACEFUL_SHUTDOWN_TIME/ { getline; gsub(/"/, "", $2); print $2 }' manifests/app.yaml)"
-          test "$termination" -gt "$((drain + shutdown))"
+          telemetry="$(awk '/name: OTEL_SHUTDOWN_TIMEOUT/ { getline; gsub(/["s]/, "", $2); print $2 }' manifests/app.yaml)"
+          test "$termination" -gt "$((drain + shutdown + telemetry))"
 
       - name: Authenticate to DHI
         if: github.actor != 'dependabot[bot]' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)

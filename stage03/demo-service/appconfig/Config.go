@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"time"
 
 	"github.com/joho/godotenv"
 	"github.com/kelseyhightower/envconfig"
@@ -15,6 +16,7 @@ import (
 
 type AppConfig struct {
 	Kubernetes struct {
+		PodUID       string `envconfig:"POD_UID"`
 		PodName      string `envconfig:"POD_NAME"`
 		PodIP        string `envconfig:"POD_IP"`
 		PodNamespace string `envconfig:"POD_NAMESPACE"`
@@ -23,6 +25,11 @@ type AppConfig struct {
 	Logging struct {
 		Format string `envconfig:"LOG_FORMAT" default:"text"`
 		Level  string `envconfig:"LOG_LEVEL" default:"info"`
+	}
+	Telemetry struct {
+		Enabled          bool          `envconfig:"OTEL_ENABLED" default:"false"`
+		MetricIntervalMS int           `envconfig:"OTEL_METRIC_EXPORT_INTERVAL" default:"15000"`
+		ShutdownTimeout  time.Duration `envconfig:"OTEL_SHUTDOWN_TIMEOUT" default:"5s"`
 	}
 	Server struct {
 		Host                 string `envconfig:"SERVER_HOST"`
@@ -60,6 +67,12 @@ func InitConfig(file string, config *AppConfig) error {
 }
 
 func validateConfig(config *AppConfig) error {
+	if config.Telemetry.MetricIntervalMS <= 0 || config.Telemetry.MetricIntervalMS > 3600000 {
+		return fmt.Errorf("OTEL_METRIC_EXPORT_INTERVAL must be between 1 and 3600000 milliseconds")
+	}
+	if config.Telemetry.ShutdownTimeout <= 0 || config.Telemetry.ShutdownTimeout > time.Minute {
+		return fmt.Errorf("OTEL_SHUTDOWN_TIMEOUT must be greater than zero and at most 1m")
+	}
 	if config.Server.GracefulShutdownTime <= 0 {
 		return fmt.Errorf("graceful shutdown time must be greater than 0")
 	}

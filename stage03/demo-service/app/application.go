@@ -8,6 +8,7 @@ import (
 	"demo-service/certstore"
 	"demo-service/handlers"
 	"demo-service/logging"
+	"demo-service/telemetry"
 	"errors"
 	"fmt"
 	"html/template"
@@ -21,9 +22,14 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/propagation"
+	"go.opentelemetry.io/otel/trace"
 )
 
 type Application struct {
+	telemetry        *telemetry.Providers
 	router           *gin.Engine
 	log              *slog.Logger
 	cfg              appconfig.AppConfig
@@ -50,6 +56,16 @@ func (a *Application) Start(ctx context.Context) error {
 		return err
 	}
 	slog.SetDefault(a.log)
+	otel.SetErrorHandler(otel.ErrorHandlerFunc(func(err error) { a.log.Warn("Telemetry export failed", "error", err) }))
+	a.telemetry, err = telemetry.New(ctx, a.cfg, &a.state.Runtime)
+	if err != nil {
+		return fmt.Errorf("initialize telemetry: %w", err)
+	}
+	defer func() {
+		if err := a.telemetry.Shutdown(a.cfg.Telemetry.ShutdownTimeout); err != nil {
+			a.log.Warn("Telemetry shutdown failed", "error", err)
+		}
+	}()
 	a.log.InfoContext(ctx, "Configuration initialized")
 	a.log.InfoContext(ctx, "Starting application")
 	if a.cfg.Server.UseTLS {
@@ -161,6 +177,22 @@ func (a *Application) runServer(ctx context.Context, serve func() error, watchEr
 func (a *Application) initRouter() error {
 	gin.SetMode(a.cfg.Gin.Mode)
 	router := gin.New()
+	if a.telemetry == nil {
+		// Also generate IDs for local/test requests with export disabled.
+		var err error
+		a.telemetry, err = telemetry.New(context.Background(), a.cfg, &a.state.Runtime)
+		if err != nil {
+			return err
+		}
+	}
+	router.Use(otelgin.Middleware(telemetry.ServiceName,
+		otelgin.WithTracerProvider(a.telemetry.Traces),
+		otelgin.WithMeterProvider(a.telemetry.Metrics),
+		otelgin.WithPropagators(propagation.TraceContext{})))
+	router.Use(func(c *gin.Context) {
+		c.Header("X-Trace-ID", trace.SpanContextFromContext(c.Request.Context()).TraceID().String())
+		c.Next()
+	})
 	router.Use(requestLogger(a.logger()))
 	router.Use(recoveryLogger(a.logger()))
 	router.SetTrustedProxies(nil)

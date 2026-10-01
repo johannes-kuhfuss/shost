@@ -1,6 +1,7 @@
 package app
 
 import (
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
@@ -8,6 +9,8 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
 )
 
 func requestLogger(logger *slog.Logger) gin.HandlerFunc {
@@ -35,6 +38,9 @@ func recoveryLogger(logger *slog.Logger) gin.HandlerFunc {
 	// Retain Gin's handling of disconnected clients, but replace its text dump
 	// (which includes request headers) with a structured panic record.
 	return gin.CustomRecoveryWithWriter(io.Discard, func(c *gin.Context, recovered any) {
+		span := trace.SpanFromContext(c.Request.Context())
+		span.RecordError(fmt.Errorf("panic: %v", recovered))
+		span.SetStatus(codes.Error, "HTTP handler panicked")
 		logger.ErrorContext(c.Request.Context(), "HTTP handler panicked",
 			"error", recovered,
 			"exception.stacktrace", string(debug.Stack()),

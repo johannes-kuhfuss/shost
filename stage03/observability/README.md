@@ -2,7 +2,8 @@
 
 Deploy Grafana, Prometheus, Loki, Tempo, and Grafana Alloy in the existing
 `observability` namespace. Grafana uses a local account; Authentik integration
-and demo-service instrumentation are separate follow-up steps.
+is deferred. The [demo-service integration](../demo-service/README.md#opentelemetry)
+is installed separately with the application's manifests.
 
 | Component | Chart repository / version | Application | Purpose |
 | --- | --- | --- | --- |
@@ -225,10 +226,10 @@ tests the ingestion pipeline, not the namespace ingress policy or browser UI.
 Use its printed trace ID to verify Grafana log-to-trace and trace-to-log links.
 The sample log is retained like other telemetry and expires normally.
 
-## Application contract for step 2
+## Application integration contract
 
-No application namespace is opted into OTLP by this installation. Enable it
-when instrumenting that application:
+The stack installation does not label application namespaces. The demo-service
+manifest includes this opt-in; for other instrumented applications, enable it:
 
 ```bash
 kubectl label namespace <application-namespace> telemetry.tc.jku.internal/client=true

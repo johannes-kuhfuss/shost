@@ -5,6 +5,7 @@ metadata:
   labels:
     internal-web-gateway-access: "true"
     trust.tc.jku.internal/internal-ca: "true"
+    telemetry.tc.jku.internal/client: "true"
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -23,8 +24,8 @@ spec:
       labels:
         app.kubernetes.io/name: demo-service
     spec:
-      # 12s drain + 10s shutdown timeout leaves 8s of safety margin.
-      terminationGracePeriodSeconds: 30
+      # 12s drain + 10s HTTP shutdown + 5s telemetry flush + 8s margin.
+      terminationGracePeriodSeconds: 35
       securityContext:
         # Comply with PSA Restricted 
         # Do not run as root
@@ -41,8 +42,24 @@ spec:
           imagePullPolicy: Always
 
           # Specify environment variables
-          # The first 4 environment variables inject K8s runtime information into the Pod for display purposes
+          # Kubernetes metadata supports the status page and telemetry enrichment.
           env:
+            - name: OTEL_ENABLED
+              value: "true"
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: http://alloy.observability.svc.cluster.local:4318
+            - name: OTEL_EXPORTER_OTLP_PROTOCOL
+              value: http/protobuf
+            - name: OTEL_METRIC_EXPORT_INTERVAL
+              value: "15000"
+            - name: OTEL_SHUTDOWN_TIMEOUT
+              value: "5s"
+            - name: LOG_FORMAT
+              value: json
+            - name: POD_UID
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.uid
             - name: POD_NAME
               valueFrom:
                 fieldRef:
