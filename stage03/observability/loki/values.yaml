@@ -1,6 +1,10 @@
 fullnameOverride: loki
 deploymentMode: SingleBinary
 loki:
+  # Inherited by the Loki container and its rules sidecar.
+  podSecurityContext:
+    seccompProfile:
+      type: RuntimeDefault
   # Chart 7.3.0's default image lags its appVersion; pin the matching patch.
   image:
     tag: 3.6.12

@@ -34,6 +34,51 @@ def config(name, key):
 
 
 (rendered / "configs").mkdir(exist_ok=True)
+# Check effective settings for all containers, including chart helpers and hooks.
+# These guard the Restricted PSS settings used here; live admission remains
+# authoritative for the cluster's policy version and additional policies.
+security_errors = []
+pod_count = 0
+for workload in objects:
+    kind = workload["kind"]
+    if kind == "Pod":
+        pod = workload["spec"]
+    elif kind in ("Deployment", "StatefulSet", "DaemonSet", "ReplicaSet", "Job"):
+        pod = workload["spec"]["template"]["spec"]
+    elif kind == "CronJob":
+        pod = workload["spec"]["jobTemplate"]["spec"]["template"]["spec"]
+    else:
+        continue
+    pod_count += 1
+    name = f'{kind}/{workload["metadata"]["name"]}'
+    pod_sc = pod.get("securityContext") or {}
+    for field in ("hostNetwork", "hostPID", "hostIPC"):
+        if pod.get(field, False):
+            security_errors.append(f"{name}: {field} must be disabled")
+    allowed_volumes = {"name", "configMap", "csi", "downwardAPI", "emptyDir", "ephemeral", "persistentVolumeClaim", "projected", "secret"}
+    for volume in pod.get("volumes", []):
+        if set(volume) - allowed_volumes:
+            security_errors.append(f'{name}: volume {volume["name"]} is not Restricted-compatible')
+    for container in pod.get("containers", []) + pod.get("initContainers", []) + pod.get("ephemeralContainers", []):
+        sc = container.get("securityContext") or {}
+        effective = {**pod_sc, **sc}
+        checks = {
+            "runAsNonRoot must be true": effective.get("runAsNonRoot") is True,
+            "runAsUser must not be root": effective.get("runAsUser") != 0,
+            "seccomp must be RuntimeDefault or Localhost": (effective.get("seccompProfile") or {}).get("type") in ("RuntimeDefault", "Localhost"),
+            "allowPrivilegeEscalation must be false": sc.get("allowPrivilegeEscalation") is False,
+            "privileged must be disabled": not sc.get("privileged", False),
+            "capabilities must drop ALL": "ALL" in (sc.get("capabilities") or {}).get("drop", []),
+            "only NET_BIND_SERVICE may be added": set((sc.get("capabilities") or {}).get("add", [])) <= {"NET_BIND_SERVICE"},
+            "host ports must be disabled": not any(p.get("hostPort", 0) for p in container.get("ports", [])),
+        }
+        for message, passes in checks.items():
+            if not passes:
+                security_errors.append(f'{name}/{container["name"]}: {message}')
+if security_errors:
+    raise SystemExit("Restricted pod security checks failed:\n" + "\n".join(security_errors))
+print(f"Restricted pod security checks passed for {pod_count} pod specifications (including hooks).")
+
 for name, ports in {"grafana": [443], "prometheus-server": [80], "loki": [3100],
                     "tempo": [3200, 4318], "alloy": [12345, 4317, 4318],
                     "kube-state-metrics": [8080]}.items():

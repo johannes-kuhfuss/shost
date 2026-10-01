@@ -66,6 +66,18 @@ Browsers must trust your web CA root.
 
 ## Validate before installation
 
+The rendered workloads target Pod Security Admission's **Restricted** standard,
+including sidecars, init containers, and Helm test pods. Prometheus and its
+config-reloader explicitly disable privilege escalation and drop all capabilities;
+Prometheus and Loki set a pod-level `RuntimeDefault` seccomp profile. The renderer
+checks these settings along with non-root execution, volume types, and host access.
+See the [Kubernetes Pod Security Standards](https://kubernetes.io/docs/concepts/security/pod-security-standards/).
+
+For an installation rejected by PSA, rerun the Prometheus and Loki
+`helm upgrade --install` commands below with the updated values. No namespace
+policy changes are needed. Check the rollout and events afterward; the local
+checks do not replace admission by the cluster.
+
 The renderer downloads the pinned charts and performs Helm linting and checks
 for matching Services, persistent storage, TLS, and Grafana provisioning. It
 does not access a cluster. Python 3 with `PyYAML==6.0.3` is needed for this check.

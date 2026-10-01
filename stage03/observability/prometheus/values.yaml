@@ -1,4 +1,10 @@
 # Standalone Prometheus with kube-state-metrics; no operator required.
+configmapReload:
+  prometheus:
+    containerSecurityContext:
+      allowPrivilegeEscalation: false
+      capabilities:
+        drop: [ALL]
 alertmanager:
   enabled: false
 prometheus-pushgateway:
@@ -16,6 +22,17 @@ kube-state-metrics:
     limits:
       memory: 256Mi
 server:
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 65534
+    runAsGroup: 65534
+    fsGroup: 65534
+    seccompProfile:
+      type: RuntimeDefault
+  containerSecurityContext:
+    allowPrivilegeEscalation: false
+    capabilities:
+      drop: [ALL]
   fullnameOverride: prometheus-server
   replicaCount: 1
   strategy:
