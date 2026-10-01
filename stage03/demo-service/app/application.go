@@ -186,11 +186,14 @@ func (a *Application) initRouter() error {
 		}
 	}
 	router.Use(otelgin.Middleware(telemetry.ServiceName,
+		otelgin.WithGinFilter(func(c *gin.Context) bool { return c.FullPath() != "/metrics" }),
 		otelgin.WithTracerProvider(a.telemetry.Traces),
 		otelgin.WithMeterProvider(a.telemetry.Metrics),
 		otelgin.WithPropagators(propagation.TraceContext{})))
 	router.Use(func(c *gin.Context) {
-		c.Header("X-Trace-ID", trace.SpanContextFromContext(c.Request.Context()).TraceID().String())
+		if sc := trace.SpanContextFromContext(c.Request.Context()); sc.IsValid() {
+			c.Header("X-Trace-ID", sc.TraceID().String())
+		}
 		c.Next()
 	})
 	router.Use(requestLogger(a.logger()))
@@ -245,6 +248,10 @@ func (a *Application) initServer() {
 
 // mapUrls defines the handlers for the available URLs
 func (a *Application) mapUrls() error {
+	a.router.GET("/metrics", func(c *gin.Context) {
+		c.Header("Cache-Control", "no-store")
+		a.telemetry.MetricsHandler.ServeHTTP(c.Writer, c.Request)
+	})
 	staticRoot, err := fs.Sub(staticFiles, "static")
 	if err != nil {
 		return err

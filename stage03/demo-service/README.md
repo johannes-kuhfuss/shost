@@ -20,6 +20,7 @@ shutdown, backend TLS, and automatic certificate rotation.
 | `/health/ready` | Readiness probe; returns 503 while draining |
 | `/health/live` | Liveness probe |
 | `/logs` | Form to write a message with Debug, Info, Warn, or Error severity (GET displays the form; POST sends the message) |
+| `/metrics` | Live per-pod Prometheus text metrics; linked from the navigation and also supports OpenMetrics negotiation |
 | `/certificate` | Web page displaying the current TLS certificate's subject, issuer, serial number, DNS names, validity dates, and SHA-256 fingerprint |
 
 `/certificate` returns 503 when TLS is disabled or no certificate has been
@@ -147,6 +148,21 @@ not duplicate the existing container-log collection. `service.name` is fixed to
 `demo-service`, matching the pod label that Alloy maps to Loki's `service_name`.
 
 ## OpenTelemetry
+
+The **Metrics** navigation link opens `/metrics` as browser-readable Prometheus
+text. It exposes the existing HTTP and probe instruments through an additional
+OpenTelemetry reader, independently of the periodic OTLP exporter. It works
+even with `OTEL_ENABLED=false`. OpenMetrics clients can request
+`Accept: application/openmetrics-text; version=1.0.0` to include supported exemplars.
+
+This is a snapshot of the individual pod serving the request, not a historical
+or cluster-wide view. HTTP metrics appear after requests have been handled;
+all six probe counter series are present from startup. `/metrics` is excluded
+from Gin tracing, HTTP metrics, and routine access logging, and responses are
+not cached. It follows the service's existing HTTPS and access configuration.
+Keep using Grafana for history and aggregation. The stack continues receiving
+OTLP metrics; no Prometheus scrape job is added for this endpoint, avoiding
+duplicate ingestion of the same instruments.
 
 `otelgin` runs before access logging and recovery. It extracts W3C `traceparent`
 and `tracestate`; a valid incoming parent produces a new server span in the same

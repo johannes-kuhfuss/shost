@@ -145,6 +145,12 @@ func TestOTLPExportOnShutdownAfterCancellation(t *testing.T) {
 	_, span := p.Traces.Tracer("test").Start(ctx, "request")
 	span.End()
 	state.Runtime.RecordReadinessProbe(false)
+	// Pulling the second reader must not consume/reset the OTLP reader's data.
+	scrape := httptest.NewRecorder()
+	p.MetricsHandler.ServeHTTP(scrape, httptest.NewRequest("GET", "/metrics", nil))
+	if scrape.Code != http.StatusOK {
+		t.Fatalf("scrape failed: %s", scrape.Body.String())
+	}
 	cancel()
 	if err := p.Shutdown(2 * time.Second); err != nil {
 		t.Fatal(err)
@@ -164,6 +170,13 @@ func TestOTLPExportOnShutdownAfterCancellation(t *testing.T) {
 		}
 		if len(res.ScopeMetrics) == 0 || len(res.ScopeMetrics[0].Metrics[0].GetSum().DataPoints) != 6 {
 			t.Fatal("missing probe series")
+		}
+		var total int64
+		for _, point := range res.ScopeMetrics[0].Metrics[0].GetSum().DataPoints {
+			total += point.GetAsInt()
+		}
+		if total != 1 {
+			t.Fatalf("scrape changed OTLP counters: %d", total)
 		}
 	}
 }

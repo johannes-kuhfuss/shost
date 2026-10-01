@@ -10,10 +10,14 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"github.com/prometheus/otlptranslator"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetrichttp"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp"
+	otelprom "go.opentelemetry.io/otel/exporters/prometheus"
 	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/propagation"
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
@@ -24,8 +28,9 @@ import (
 const ServiceName = "demo-service"
 
 type Providers struct {
-	Traces  *sdktrace.TracerProvider
-	Metrics *sdkmetric.MeterProvider
+	MetricsHandler http.Handler
+	Traces         *sdktrace.TracerProvider
+	Metrics        *sdkmetric.MeterProvider
 }
 
 func New(ctx context.Context, cfg appconfig.AppConfig, state *appstate.RuntimeState) (*Providers, error) {
@@ -48,6 +53,15 @@ func New(ctx context.Context, cfg appconfig.AppConfig, state *appstate.RuntimeSt
 	}
 	traceOptions := []sdktrace.TracerProviderOption{sdktrace.WithResource(res), sdktrace.WithSampler(sdktrace.ParentBased(sdktrace.AlwaysSample()))}
 	metricOptions := []sdkmetric.Option{sdkmetric.WithResource(res)}
+	// A private registry avoids process-global collectors and duplicate registration.
+	// This reader shares instruments with OTLP but collects independently on demand.
+	registry := prometheus.NewRegistry()
+	pull, err := otelprom.New(otelprom.WithRegisterer(registry),
+		otelprom.WithTranslationStrategy(otlptranslator.UnderscoreEscapingWithSuffixes))
+	if err != nil {
+		return nil, err
+	}
+	metricOptions = append(metricOptions, sdkmetric.WithReader(pull))
 	if cfg.Telemetry.Enabled {
 		// HTTP exporters use standard OTEL_EXPORTER_OTLP_* environment settings.
 		// Creation doesn't require a reachable collector; export happens asynchronously.
@@ -67,6 +81,7 @@ func New(ctx context.Context, cfg appconfig.AppConfig, state *appstate.RuntimeSt
 			sdkmetric.WithInterval(time.Duration(cfg.Telemetry.MetricIntervalMS)*time.Millisecond))))
 	}
 	p := &Providers{Traces: sdktrace.NewTracerProvider(traceOptions...), Metrics: sdkmetric.NewMeterProvider(metricOptions...)}
+	p.MetricsHandler = promhttp.HandlerFor(registry, promhttp.HandlerOpts{EnableOpenMetrics: true})
 	if err := RegisterProbes(p.Metrics.Meter("demo-service/probes"), state); err != nil {
 		_ = p.Shutdown(time.Second)
 		return nil, err

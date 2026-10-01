@@ -15,6 +15,10 @@ import (
 
 func requestLogger(logger *slog.Logger) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		if c.FullPath() == "/metrics" {
+			c.Next()
+			return
+		}
 		start := time.Now()
 		c.Next()
 		status := c.Writer.Status()
