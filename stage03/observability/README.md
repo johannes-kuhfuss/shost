@@ -163,7 +163,7 @@ helm upgrade --install grafana grafana-community/grafana \
   --wait --timeout 10m
 ```
 
-Open **https://grafana.tc.jku.internal** and log in as `admin` with the password
+Open **<https://grafana.tc.jku.internal>** and log in as `admin` with the password
 you entered. Anonymous access and self-registration are disabled. Grafana stores
 users in its persistent SQLite database. The Secret initializes a new database;
 changing the Secret does not reset an existing account's password. Use Grafana's
