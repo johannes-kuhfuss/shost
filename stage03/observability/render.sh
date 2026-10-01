@@ -27,5 +27,6 @@ render tempo grafana-community "$TEMPO_CHART_VERSION"
 render alloy grafana "$ALLOY_CHART_VERSION" \
   --set-file alloy.configMap.content=alloy/config.alloy
 render grafana grafana-community "$GRAFANA_CHART_VERSION" \
-  --set-file dashboards.platform.overview.json=grafana/overview.json
+  --set-file dashboards.platform.overview.json=grafana/overview.json \
+  --set-file dashboards.platform.demo-service.json=grafana/demo-service.json
 python3 validate.py "$output"

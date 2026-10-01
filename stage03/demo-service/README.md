@@ -216,6 +216,12 @@ No downstream call is made by this version of the demo.
 
 ### Deploy and verify the integration
 
+The [Demo-service Grafana dashboard](../observability/grafana/demo-service.json)
+is provisioned by the [observability stack](../observability/README.md) in the
+**Platform** folder. Open <https://grafana.tc.jku.internal/d/demo-service> for
+HTTP traffic and latency, probe outcomes, pod resources, and correlated logs.
+HTTP panels exclude health checks; probe panels show those separately.
+
 Install the [observability stack](../observability/README.md) first. Build/push
 a new demo image, set that image in `manifests/app.yaml`, then apply the existing
 raw resources; no Helm migration is involved:

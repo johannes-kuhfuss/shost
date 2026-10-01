@@ -146,4 +146,4 @@ dashboardProviders:
         editable: false
         options:
           path: /var/lib/grafana/dashboards/platform
-# The install/render commands inject dashboards.platform.overview.json from disk.
+# The install/render commands inject the overview and demo-service dashboards from disk.

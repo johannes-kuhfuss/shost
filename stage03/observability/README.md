@@ -44,8 +44,26 @@ The Platform overview dashboard shows node readiness, running pods, restarts,
 container CPU/memory, scrape health, and observability logs. Arbitrary service
 annotation scraping is disabled. Add explicit scrape jobs when enabling
 component-specific metrics, such as Cilium or CloudNativePG. Talos host disk
-and system-service monitoring, notification routing, and application dashboards
+and system-service monitoring, notification routing, and other application dashboards
 are not included in this first step.
+
+The **Demo-service** dashboard in the **Platform** folder shows request rate,
+5xx ratio, p50/p95/p99 latency, probe outcomes, pod readiness and restarts,
+CPU/memory by pod, and correlated container logs. Its namespace selector applies
+to all panels. HTTP panels exclude `/health/*`; `/metrics` is not instrumented.
+Application metrics arrive through OTLP, while pod health and resources come
+from kube-state-metrics and cAdvisor. No additional scrape job is needed.
+Idle traffic has no error ratio or latency; missing telemetry is not shown as
+healthy zero traffic. Probe failures count handled requests, not connection
+failures or timeouts. Range totals use `increase()` and can be fractional.
+
+After the Grafana Helm upgrade below, open
+<https://grafana.tc.jku.internal/d/demo-service>. Send requests to the demo,
+temporarily fail readiness on its probes page, and allow two metric exports
+before checking the charts. Expand a log's details or select a latency exemplar
+to follow the existing Tempo trace links. The dashboard source is
+[`grafana/demo-service.json`](grafana/demo-service.json); it can also be imported
+manually into this stack, which has the `prometheus` and `loki` data-source UIDs.
 
 ## Prerequisites
 
@@ -161,6 +179,7 @@ helm upgrade --install grafana grafana-community/grafana \
   --version "$GRAFANA_CHART_VERSION" --namespace observability \
   -f grafana/values.yaml \
   --set-file dashboards.platform.overview.json=grafana/overview.json \
+  --set-file dashboards.platform.demo-service.json=grafana/demo-service.json \
   --wait --timeout 10m
 ```
 

@@ -124,6 +124,10 @@ assert tempo_ds["tracesToMetrics"]["datasourceUid"] == "prometheus"
 dashboard = json.loads(obj("ConfigMap", "grafana-dashboards-platform")["data"]["overview.json"])
 assert dashboard["uid"] == "platform-overview"
 assert {p["datasource"]["uid"] for p in dashboard["panels"]} <= {d["uid"] for d in ds}
+demo_dashboard = json.loads(obj("ConfigMap", "grafana-dashboards-platform")["data"]["demo-service.json"])
+assert demo_dashboard == json.loads((ROOT / "grafana" / "demo-service.json").read_text(encoding="utf-8"))
+assert demo_dashboard["uid"] == "demo-service"
+assert {p["datasource"]["uid"] for p in demo_dashboard["panels"]} <= {d["uid"] for d in ds}
 
 prom = config("prometheus-server", "prometheus.yml")
 assert prom["storage"]["exemplars"]["max_exemplars"] > 0
