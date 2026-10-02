@@ -17,10 +17,12 @@ initChownData:
   enabled: false
 resources:
   requests:
-    cpu: 50m
-    memory: 128Mi
-  limits:
+    cpu: 150m
     memory: 512Mi
+  limits:
+    memory: 1Gi
+env:
+  GOMEMLIMIT: "900MiB"
 service:
   port: 443
   portName: https
@@ -34,6 +36,9 @@ readinessProbe:
     path: /api/health
     port: 3000
     scheme: HTTPS
+  timeoutSeconds: 5
+  periodSeconds: 10
+  failureThreshold: 3
 livenessProbe:
   httpGet:
     path: /api/health
